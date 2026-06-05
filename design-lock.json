@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "designs": {
+    "Notion-design-analysis": {
+      "source": "voltagent/awesome-design-md",
+      "sourcePath": "design-md/notion/DESIGN.md",
+      "outputPath": "DESIGN.md",
+      "ref": "HEAD",
+      "commitSha": "6d10c1457484c971cdae35563a1386102b4337c6",
+      "contentHash": "fa9d6e78216d8f3e5d3990709ca2de6bc2e268e945bb94f255fd1bfb15455266",
+      "fetchedAt": "2026-06-04T01:59:44.413Z"
+    }
+  }
+}

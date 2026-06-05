@@ -1,0 +1,3 @@
+-- Optional local seed.
+-- The app creates the first organization and project for an authenticated user
+-- through public.create_workspace(), so no auth-bound seed data is required.
