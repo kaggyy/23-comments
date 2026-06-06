@@ -959,7 +959,7 @@ export function Dashboard() {
       <div className="page">
         {inviteUrl ? (
           <div className="notice">
-            招待リンクをコピーしました: <strong>{inviteUrl}</strong>
+            招待リンクをコピーしました。
           </div>
         ) : null}
         {profileMessage ? <div className="notice">{profileMessage}</div> : null}

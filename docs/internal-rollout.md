@@ -39,6 +39,7 @@
 4. Environment variablesに以下を設定します。
    - `NEXT_PUBLIC_SUPABASE_URL`
    - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+   - `NEXT_PUBLIC_APP_URL`（Vercelの正式URL）
 5. デプロイ後、本番URLで以下を確認します。
    - ログインできる
    - プロジェクトを作成できる
