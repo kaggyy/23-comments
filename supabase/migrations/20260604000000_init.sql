@@ -58,6 +58,7 @@ create table if not exists public.reports (
   device_pixel_ratio numeric not null default 1,
   user_agent text not null,
   browser_metadata jsonb not null default '{}'::jsonb,
+  assignee_ids uuid[] not null default '{}'::uuid[],
   created_by uuid references auth.users(id) on delete set null,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()

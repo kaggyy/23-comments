@@ -777,7 +777,7 @@ h1 {
 .report-list-item {
   display: grid;
   width: 100%;
-  grid-template-columns: 10px minmax(0, 1fr);
+  grid-template-columns: 4px minmax(0, 1fr);
   gap: 10px;
   align-items: center;
   padding: 12px;
@@ -810,10 +810,11 @@ h1 {
   white-space: nowrap;
 }
 
-.status-dot {
+.status-dot.status {
   display: block;
-  width: 9px;
-  height: 9px;
+  width: 4px;
+  height: 4px;
+  min-height: 4px;
   padding: 0;
   border-radius: 9999px;
 }
@@ -934,17 +935,40 @@ h1 {
   display: inline-flex;
 }
 
+.assignee-menu-wrap {
+  position: relative;
+  display: inline-flex;
+  max-width: 100%;
+}
+
 .status-button {
   border: 0;
 }
 
+.assignee-button {
+  max-width: 100%;
+  min-height: 30px;
+  padding: 4px 7px;
+  overflow: hidden;
+  color: inherit;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+}
+
 .status-button:hover,
-.status-button:focus-visible {
+.status-button:focus-visible,
+.assignee-button:hover,
+.assignee-button:focus-visible {
   outline: none;
   box-shadow: 0 0 0 2px rgb(0 122 255 / 20%);
 }
 
-.status-menu {
+.status-menu,
+.assignee-menu {
   position: absolute;
   top: calc(100% + 6px);
   left: 0;
@@ -958,6 +982,12 @@ h1 {
   box-shadow: 0 12px 28px rgb(26 26 26 / 12%);
 }
 
+.assignee-menu {
+  width: max-content;
+  min-width: 180px;
+  max-width: min(280px, calc(100vw - 48px));
+}
+
 .status-menu-item {
   display: flex;
   align-items: center;
@@ -969,8 +999,33 @@ h1 {
   border-radius: 6px;
 }
 
+.assignee-menu-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 16px;
+  gap: 10px;
+  align-items: center;
+  min-height: 34px;
+  padding: 7px 8px;
+  color: var(--charcoal);
+  text-align: left;
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.assignee-menu-item span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .status-menu-item:hover,
-.status-menu-item:focus-visible {
+.status-menu-item:focus-visible,
+.assignee-menu-item:hover,
+.assignee-menu-item:focus-visible,
+.assignee-menu-item-active {
   background: var(--surface-soft);
   outline: none;
 }

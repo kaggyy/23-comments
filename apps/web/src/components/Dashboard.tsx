@@ -9,6 +9,7 @@ import type {
 import type { User } from "@supabase/supabase-js";
 import {
   ArrowDownUp,
+  Check,
   Copy,
   LogOut,
   MessageSquare,
@@ -21,7 +22,7 @@ import {
   X
 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   type RectAnnotation,
   type ReportStatus,
@@ -70,6 +71,7 @@ type Report = {
   viewport_height: number;
   device_pixel_ratio: number;
   user_agent: string;
+  assignee_ids: string[];
   created_by: string | null;
   created_at: string;
   updated_at: string;
@@ -128,6 +130,52 @@ function displayUserName(
   const displayName = profile?.display_name.trim();
 
   return displayName || profile?.email || shortId(userId);
+}
+
+function displayBrowserInfo(userAgent: string) {
+  const edgeMatch = userAgent.match(/Edg\/([\d.]+)/);
+  const chromeMatch = userAgent.match(/Chrome\/([\d.]+)/);
+  const firefoxMatch = userAgent.match(/Firefox\/([\d.]+)/);
+  const safariMatch = userAgent.match(/Version\/([\d.]+).*Safari/);
+
+  if (edgeMatch) {
+    return `Edge ${edgeMatch[1]}`;
+  }
+
+  if (chromeMatch) {
+    return `Chrome ${chromeMatch[1]}`;
+  }
+
+  if (firefoxMatch) {
+    return `Firefox ${firefoxMatch[1]}`;
+  }
+
+  if (safariMatch) {
+    return `Safari ${safariMatch[1]}`;
+  }
+
+  return "不明";
+}
+
+function displayDeviceInfo(report: Report) {
+  const userAgent = report.user_agent;
+  let platform = "不明";
+  const macMatch = userAgent.match(/Mac OS X ([\d_]+)/);
+  const windowsMatch = userAgent.match(/Windows NT ([\d.]+)/);
+  const androidMatch = userAgent.match(/Android ([\d.]+)/);
+  const iosMatch = userAgent.match(/(?:iPhone|iPad).*OS ([\d_]+)/);
+
+  if (macMatch) {
+    platform = `macOS ${macMatch[1].replaceAll("_", ".")}`;
+  } else if (windowsMatch) {
+    platform = `Windows ${windowsMatch[1]}`;
+  } else if (androidMatch) {
+    platform = `Android ${androidMatch[1]}`;
+  } else if (iosMatch) {
+    platform = `iOS ${iosMatch[1].replaceAll("_", ".")}`;
+  }
+
+  return `${platform} / ${report.viewport_width} x ${report.viewport_height} / DPR ${report.device_pixel_ratio}`;
 }
 
 function isRectAnnotation(annotation: unknown): annotation is RectAnnotation {
@@ -653,7 +701,12 @@ export function Dashboard() {
 
     const nextReports = (data ?? []) as unknown as Report[];
     setReports(nextReports);
-    await loadProfilesForUsers(nextReports.map((report) => report.created_by));
+    await loadProfilesForUsers(
+      nextReports.flatMap((report) => [
+        report.created_by,
+        ...(report.assignee_ids ?? [])
+      ])
+    );
     setSelectedReportId((current) => {
       if (current && nextReports.some((report) => report.id === current)) {
         return current;
@@ -1144,6 +1197,7 @@ export function Dashboard() {
               getAssetUrl={getAssetUrl}
               getUserName={(userId) => displayUserName(userId, profilesById)}
               loadProfilesForUsers={loadProfilesForUsers}
+              members={members}
               onChanged={() => loadReports()}
               onDeleteReport={setReportToDelete}
               onNotify={showToast}
@@ -1439,6 +1493,7 @@ function ReportDetail({
   getAssetUrl,
   getUserName,
   loadProfilesForUsers,
+  members,
   onChanged,
   onDeleteReport,
   onNotify
@@ -1447,21 +1502,25 @@ function ReportDetail({
   getAssetUrl: (path: string) => string;
   getUserName: (userId: string | null | undefined) => string;
   loadProfilesForUsers: (userIds: Array<string | null | undefined>) => Promise<void>;
+  members: Profile[];
   onChanged: () => Promise<void>;
   onDeleteReport: (report: Report) => void;
   onNotify: (message: string, tone?: ToastTone) => void;
 }) {
   const [description, setDescription] = useState("");
   const [status, setStatus] = useState<ReportStatus>("open");
+  const [assigneeIds, setAssigneeIds] = useState<string[]>([]);
   const [comments, setComments] = useState<Comment[]>([]);
   const [commentBody, setCommentBody] = useState("");
-  const [editingField, setEditingField] = useState<"status" | "description" | null>(
-    null
-  );
+  const [editingField, setEditingField] = useState<
+    "status" | "assignees" | "description" | null
+  >(null);
   const [openCommentMenuId, setOpenCommentMenuId] = useState<string | null>(null);
   const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
   const [editingCommentBody, setEditingCommentBody] = useState("");
   const [isScreenshotModalOpen, setIsScreenshotModalOpen] = useState(false);
+  const statusMenuRef = useRef<HTMLDivElement | null>(null);
+  const assigneeMenuRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     if (!report) {
@@ -1470,6 +1529,7 @@ function ReportDetail({
 
     setDescription(report.description);
     setStatus(report.status);
+    setAssigneeIds(report.assignee_ids ?? []);
     setEditingField(null);
     setOpenCommentMenuId(null);
     setEditingCommentId(null);
@@ -1493,6 +1553,36 @@ function ReportDetail({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [isScreenshotModalOpen]);
 
+  useEffect(() => {
+    if (editingField !== "status" && editingField !== "assignees") {
+      return;
+    }
+
+    function handlePointerDown(event: PointerEvent) {
+      const target = event.target as Node;
+
+      if (
+        !statusMenuRef.current?.contains(target) &&
+        !assigneeMenuRef.current?.contains(target)
+      ) {
+        setEditingField(null);
+      }
+    }
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setEditingField(null);
+      }
+    }
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [editingField]);
+
   async function loadComments(reportId: string) {
     const supabase = getSupabaseClient();
     const { data, error } = await supabase
@@ -1514,6 +1604,7 @@ function ReportDetail({
   async function saveReportChanges(nextValues: {
     description?: string;
     status?: ReportStatus;
+    assigneeIds?: string[];
   }) {
     if (!report) {
       return false;
@@ -1521,12 +1612,14 @@ function ReportDetail({
 
     const nextDescription = nextValues.description ?? description;
     const nextStatus = nextValues.status ?? status;
+    const nextAssigneeIds = nextValues.assigneeIds ?? assigneeIds;
     const supabase = getSupabaseClient();
     const { error } = await supabase
       .from("reports")
       .update({
         description: nextDescription,
-        status: nextStatus
+        status: nextStatus,
+        assignee_ids: nextAssigneeIds
       })
       .eq("id", report.id);
 
@@ -1539,12 +1632,68 @@ function ReportDetail({
     return true;
   }
 
+  async function notifyAddedAssignees(addedAssigneeIds: string[]) {
+    if (!report || !addedAssigneeIds.length) {
+      return;
+    }
+
+    const supabase = getSupabaseClient();
+    const {
+      data: { session }
+    } = await supabase.auth.getSession();
+
+    if (!session) {
+      onNotify("通知を送信できませんでした。", "error");
+      return;
+    }
+
+    try {
+      const response = await fetch("/api/notifications/assignee", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`
+        },
+        body: JSON.stringify({
+          reportId: report.id,
+          addedAssigneeIds
+        })
+      });
+
+      if (!response.ok) {
+        const result = (await response.json().catch(() => null)) as {
+          error?: string;
+        } | null;
+        throw new Error(result?.error ?? "通知を送信できませんでした。");
+      }
+    } catch (error) {
+      onNotify(error instanceof Error ? error.message : "通知を送信できませんでした。", "error");
+    }
+  }
+
   async function handleStatusChange(nextStatus: ReportStatus) {
     setStatus(nextStatus);
     const saved = await saveReportChanges({ status: nextStatus });
 
     if (saved) {
       setEditingField(null);
+    }
+  }
+
+  async function handleAssigneeToggle(memberId: string) {
+    const previousAssigneeIds = assigneeIds;
+    const nextAssigneeIds = assigneeIds.includes(memberId)
+      ? assigneeIds.filter((assigneeId) => assigneeId !== memberId)
+      : [...assigneeIds, memberId];
+    const addedAssigneeIds = nextAssigneeIds.filter(
+      (assigneeId) => !previousAssigneeIds.includes(assigneeId)
+    );
+
+    setAssigneeIds(nextAssigneeIds);
+    const saved = await saveReportChanges({ assigneeIds: nextAssigneeIds });
+
+    if (saved) {
+      await notifyAddedAssignees(addedAssigneeIds);
     }
   }
 
@@ -1655,7 +1804,9 @@ function ReportDetail({
   const screenshotUrl = getAssetUrl(report.annotated_screenshot_path);
   const screenshotFocusStyle = getScreenshotFocusStyle(report, screenshotUrl);
   const screenshotAlt = report.description || report.page_title || "投稿されたスクリーンショット";
-  const projectName = displayProjectName(report.projects?.name);
+  const assigneeLabel = assigneeIds.length
+    ? assigneeIds.map((assigneeId) => getUserName(assigneeId)).join(", ")
+    : "未設定";
 
   return (
     <aside className="panel">
@@ -1697,31 +1848,39 @@ function ReportDetail({
           <div className="detail-row">
             <span className="detail-label">ステータス</span>
             <div className="detail-value">
-              {editingField === "status" ? (
-                <select
-                  autoFocus
-                  className="detail-select"
-                  value={status}
-                  onBlur={() => setEditingField(null)}
-                  onChange={(event) =>
-                    handleStatusChange(event.target.value as ReportStatus)
+              <div className="status-menu-wrap" ref={statusMenuRef}>
+                <button
+                  aria-expanded={editingField === "status"}
+                  aria-haspopup="menu"
+                  className={`status-button ${statusClass(status)}`}
+                  type="button"
+                  onClick={() =>
+                    setEditingField((currentField) =>
+                      currentField === "status" ? null : "status"
+                    )
                   }
                 >
-                  {statuses.map((nextStatus) => (
-                    <option key={nextStatus} value={nextStatus}>
-                      {statusLabels[nextStatus]}
-                    </option>
-                  ))}
-                </select>
-              ) : (
-                <button
-                  className="detail-editable"
-                  type="button"
-                  onClick={() => setEditingField("status")}
-                >
-                  <span className={statusClass(status)}>{statusLabels[status]}</span>
+                  {statusLabels[status]}
                 </button>
-              )}
+                {editingField === "status" ? (
+                  <div className="status-menu" role="menu">
+                    {statuses.map((nextStatus) => (
+                      <button
+                        aria-current={nextStatus === status ? "true" : undefined}
+                        className="status-menu-item"
+                        key={nextStatus}
+                        role="menuitem"
+                        type="button"
+                        onClick={() => handleStatusChange(nextStatus)}
+                      >
+                        <span className={statusClass(nextStatus)}>
+                          {statusLabels[nextStatus]}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
             </div>
           </div>
 
@@ -1754,27 +1913,51 @@ function ReportDetail({
           </div>
 
           <div className="detail-row">
-            <span className="detail-label">プロジェクト</span>
-            <div className="detail-value">{projectName || "未設定"}</div>
-          </div>
-
-          <div className="detail-row">
-            <span className="detail-label">ページタイトル</span>
-            <div className="detail-value">{report.page_title || "未設定"}</div>
-          </div>
-
-          <div className="detail-row detail-row-top">
-            <span className="detail-label">ページURL</span>
+            <span className="detail-label">担当者</span>
             <div className="detail-value">
-              <a className="detail-link" href={report.page_url} rel="noreferrer" target="_blank">
-                {report.page_url}
-              </a>
-            </div>
-          </div>
+              <div className="assignee-menu-wrap" ref={assigneeMenuRef}>
+                <button
+                  aria-expanded={editingField === "assignees"}
+                  aria-haspopup="menu"
+                  className="assignee-button"
+                  type="button"
+                  onClick={() =>
+                    setEditingField((currentField) =>
+                      currentField === "assignees" ? null : "assignees"
+                    )
+                  }
+                >
+                  {assigneeLabel}
+                </button>
+                {editingField === "assignees" ? (
+                  <div className="assignee-menu" role="menu">
+                    {members.map((member) => {
+                      const memberName =
+                        member.display_name.trim() || member.email || shortId(member.id);
+                      const isSelected = assigneeIds.includes(member.id);
 
-          <div className="detail-row">
-            <span className="detail-label">作成日時</span>
-            <div className="detail-value">{formatDate(report.created_at)}</div>
+                      return (
+                        <button
+                          aria-checked={isSelected}
+                          className={
+                            isSelected
+                              ? "assignee-menu-item assignee-menu-item-active"
+                              : "assignee-menu-item"
+                          }
+                          key={member.id}
+                          role="menuitemcheckbox"
+                          type="button"
+                          onClick={() => handleAssigneeToggle(member.id)}
+                        >
+                          <span>{memberName}</span>
+                          {isSelected ? <Check aria-hidden="true" size={14} /> : null}
+                        </button>
+                      );
+                    })}
+                  </div>
+                ) : null}
+              </div>
+            </div>
           </div>
 
           <div className="detail-row">
@@ -1782,21 +1965,12 @@ function ReportDetail({
             <div className="detail-value">{formatDate(report.updated_at)}</div>
           </div>
 
-          <div className="detail-row">
-            <span className="detail-label">ビューポート</span>
-            <div className="detail-value">
-              {report.viewport_width} x {report.viewport_height}
-            </div>
-          </div>
-
-          <div className="detail-row">
-            <span className="detail-label">DPR</span>
-            <div className="detail-value">{report.device_pixel_ratio}</div>
-          </div>
-
           <div className="detail-row detail-row-top">
-            <span className="detail-label">User Agent</span>
-            <div className="detail-value">{report.user_agent}</div>
+            <span className="detail-label">ユーザー情報</span>
+            <div className="detail-value">
+              <div>デバイス: {displayDeviceInfo(report)}</div>
+              <div>ブラウザ: {displayBrowserInfo(report.user_agent)}</div>
+            </div>
           </div>
 
         </section>
