@@ -9,8 +9,6 @@ import type {
 import type { User } from "@supabase/supabase-js";
 import {
   ArrowDownUp,
-  ChevronDown,
-  ChevronUp,
   Copy,
   LogOut,
   MessageSquare,
@@ -89,6 +87,7 @@ type Comment = {
 type LoadState = "loading" | "ready" | "error";
 type ReportSortKey = "status" | "updated_at";
 type SortDirection = "asc" | "desc";
+type ReportSortValue = `${ReportSortKey}:${SortDirection}`;
 type ToastTone = "default" | "error";
 type ToastState = {
   id: number;
@@ -106,8 +105,15 @@ type ScreenshotFocusStyle = CSSProperties & {
   "--focus-aspect": string;
 };
 
+const SPLIT_MIN_PERCENT = 22;
+const SPLIT_MAX_PERCENT = 45;
+
 function displayProjectName(name: string | null | undefined) {
   return name === "Website feedback" ? "Webサイトフィードバック" : name;
+}
+
+function displayReportTitle(report: Pick<Report, "description" | "page_title">) {
+  return report.description || report.page_title || "コメントなし";
 }
 
 function displayUserName(
@@ -221,7 +227,6 @@ export function Dashboard() {
   const [selectedProjectId, setSelectedProjectId] = useState<string>("all");
   const [reports, setReports] = useState<Report[]>([]);
   const [selectedReportId, setSelectedReportId] = useState<string | null>(null);
-  const [statusFilter, setStatusFilter] = useState<ReportStatus | "all">("all");
   const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
   const [members, setMembers] = useState<Profile[]>([]);
   const [newProjectName, setNewProjectName] = useState("");
@@ -232,13 +237,16 @@ export function Dashboard() {
   const [isAccountModalOpen, setIsAccountModalOpen] = useState(false);
   const [profilesById, setProfilesById] = useState<Record<string, Profile>>({});
   const [reportToDelete, setReportToDelete] = useState<Report | null>(null);
-  const [openStatusMenuReportId, setOpenStatusMenuReportId] = useState<string | null>(null);
+  const [isProjectSelectMenuOpen, setIsProjectSelectMenuOpen] = useState(false);
+  const [isProjectMenuOpen, setIsProjectMenuOpen] = useState(false);
+  const [isReportSortMenuOpen, setIsReportSortMenuOpen] = useState(false);
+  const [reportSearchQuery, setReportSearchQuery] = useState("");
   const [toast, setToast] = useState<ToastState | null>(null);
   const [reportSort, setReportSort] = useState<ReportSort>({
     key: "updated_at",
     direction: "desc"
   });
-  const [splitLeftPercent, setSplitLeftPercent] = useState(50);
+  const [splitLeftPercent, setSplitLeftPercent] = useState(25);
 
   const selectedProject = useMemo(
     () => projects.find((project) => project.id === selectedProjectId) ?? null,
@@ -246,13 +254,13 @@ export function Dashboard() {
   );
 
   const visibleReports = useMemo(() => {
+    const query = reportSearchQuery.trim().toLowerCase();
     const filteredReports = reports.filter((report) => {
       const matchesProject =
         selectedProjectId === "all" || report.project_id === selectedProjectId;
-      const matchesStatus =
-        statusFilter === "all" || report.status === statusFilter;
+      const matchesSearch = !query || displayReportTitle(report).toLowerCase().includes(query);
 
-      return matchesProject && matchesStatus;
+      return matchesProject && matchesSearch;
     });
 
     const direction = reportSort.direction === "asc" ? 1 : -1;
@@ -276,7 +284,30 @@ export function Dashboard() {
 
       return firstReport.id.localeCompare(secondReport.id);
     });
-  }, [reportSort.direction, reportSort.key, reports, selectedProjectId, statusFilter]);
+  }, [reportSearchQuery, reportSort.direction, reportSort.key, reports, selectedProjectId]);
+
+  const reportGroups = useMemo(() => {
+    const groups: Array<{ url: string; reports: Report[] }> = [];
+    const reportsByUrl = new Map<string, Report[]>();
+
+    for (const report of visibleReports) {
+      const groupedReports = reportsByUrl.get(report.page_url);
+
+      if (groupedReports) {
+        groupedReports.push(report);
+        continue;
+      }
+
+      const nextGroup = [report];
+      reportsByUrl.set(report.page_url, nextGroup);
+      groups.push({
+        url: report.page_url,
+        reports: nextGroup
+      });
+    }
+
+    return groups;
+  }, [visibleReports]);
 
   const selectedReport = useMemo(
     () => visibleReports.find((report) => report.id === selectedReportId) ?? null,
@@ -313,72 +344,9 @@ export function Dashboard() {
     return () => window.clearTimeout(timeout);
   }, [toast]);
 
-  function handleSortChange(key: ReportSortKey) {
-    setReportSort((currentSort) => {
-      if (currentSort.key === key) {
-        return {
-          key,
-          direction: currentSort.direction === "asc" ? "desc" : "asc"
-        };
-      }
-
-      return {
-        key,
-        direction: key === "updated_at" ? "desc" : "asc"
-      };
-    });
-  }
-
-  async function handleTableStatusChange(report: Report, nextStatus: ReportStatus) {
-    setOpenStatusMenuReportId(null);
-
-    if (nextStatus === report.status) {
-      return;
-    }
-
-    const supabase = getSupabaseClient();
-    const { error } = await supabase
-      .from("reports")
-      .update({ status: nextStatus })
-      .eq("id", report.id)
-      .eq("organization_id", report.organization_id)
-      .select()
-      .single();
-
-    if (error) {
-      showToast(error.message, "error");
-      return;
-    }
-
-    await loadReports(report.organization_id);
-  }
-
-  function renderSortIcon(key: ReportSortKey) {
-    if (reportSort.key !== key) {
-      return <ArrowDownUp aria-hidden="true" size={14} />;
-    }
-
-    return reportSort.direction === "asc" ? (
-      <ChevronUp aria-hidden="true" size={14} />
-    ) : (
-      <ChevronDown aria-hidden="true" size={14} />
-    );
-  }
-
-  function getSortLabel(key: ReportSortKey) {
-    if (reportSort.key !== key) {
-      return "並び替えなし";
-    }
-
-    return reportSort.direction === "asc" ? "昇順" : "降順";
-  }
-
-  function getAriaSort(key: ReportSortKey) {
-    if (reportSort.key !== key) {
-      return "none";
-    }
-
-    return reportSort.direction === "asc" ? "ascending" : "descending";
+  function handleSortSelectChange(value: ReportSortValue) {
+    const [key, direction] = value.split(":") as [ReportSortKey, SortDirection];
+    setReportSort({ key, direction });
   }
 
   function updateSplitFromPointer(event: ReactPointerEvent<HTMLDivElement>) {
@@ -390,7 +358,9 @@ export function Dashboard() {
 
     const rect = container.getBoundingClientRect();
     const nextPercent = ((event.clientX - rect.left) / rect.width) * 100;
-    setSplitLeftPercent(Math.min(75, Math.max(28, nextPercent)));
+    setSplitLeftPercent(
+      Math.min(SPLIT_MAX_PERCENT, Math.max(SPLIT_MIN_PERCENT, nextPercent))
+    );
   }
 
   function handleSplitPointerDown(event: ReactPointerEvent<HTMLDivElement>) {
@@ -413,22 +383,22 @@ export function Dashboard() {
   function handleSplitKeyDown(event: ReactKeyboardEvent<HTMLDivElement>) {
     if (event.key === "ArrowLeft") {
       event.preventDefault();
-      setSplitLeftPercent((current) => Math.max(28, current - 3));
+      setSplitLeftPercent((current) => Math.max(SPLIT_MIN_PERCENT, current - 3));
     }
 
     if (event.key === "ArrowRight") {
       event.preventDefault();
-      setSplitLeftPercent((current) => Math.min(75, current + 3));
+      setSplitLeftPercent((current) => Math.min(SPLIT_MAX_PERCENT, current + 3));
     }
 
     if (event.key === "Home") {
       event.preventDefault();
-      setSplitLeftPercent(28);
+      setSplitLeftPercent(SPLIT_MIN_PERCENT);
     }
 
     if (event.key === "End") {
       event.preventDefault();
-      setSplitLeftPercent(75);
+      setSplitLeftPercent(SPLIT_MAX_PERCENT);
     }
   }
 
@@ -922,29 +892,118 @@ export function Dashboard() {
         </div>
       ) : null}
       <header className="topbar">
-        <div className="brand">
-          <span className="brand-mark" aria-hidden="true">
-            <img alt="" src="/icon.svg" />
-          </span>
-          <span>23 comments</span>
+        <div className="topbar-main">
+          <div className="brand">
+            <span className="brand-mark" aria-hidden="true">
+              <img alt="" src="/icon.svg" />
+            </span>
+            <span>23 comments</span>
+          </div>
+          <div className="project-switcher">
+            <div className="project-select-menu-wrap">
+              <button
+                aria-expanded={isProjectSelectMenuOpen}
+                aria-haspopup="menu"
+                aria-label="プロジェクト"
+                className="project-select-button"
+                type="button"
+                onClick={() => {
+                  setIsProjectMenuOpen(false);
+                  setIsProjectSelectMenuOpen((isOpen) => !isOpen);
+                }}
+              >
+                {selectedProject ? displayProjectName(selectedProject.name) : "すべてのプロジェクト"}
+              </button>
+              {isProjectSelectMenuOpen ? (
+                <div className="project-select-menu" role="menu">
+                  {[
+                    { id: "all", name: "すべてのプロジェクト" },
+                    ...projects.map((project) => ({
+                      id: project.id,
+                      name: displayProjectName(project.name) ?? ""
+                    }))
+                  ].map((project) => (
+                    <button
+                      className={
+                        selectedProjectId === project.id
+                          ? "project-menu-item project-menu-item-active"
+                          : "project-menu-item"
+                      }
+                      key={project.id}
+                      role="menuitem"
+                      type="button"
+                      onClick={() => {
+                        setSelectedProjectId(project.id);
+                        setIsProjectSelectMenuOpen(false);
+                      }}
+                    >
+                      {project.name}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+            <div className="project-menu-wrap">
+              <button
+                aria-expanded={isProjectMenuOpen}
+                aria-haspopup="menu"
+                aria-label="プロジェクト設定"
+                className="project-menu-button"
+                type="button"
+                onClick={() => {
+                  setIsProjectSelectMenuOpen(false);
+                  setIsProjectMenuOpen((isOpen) => !isOpen);
+                }}
+              >
+                <MoreHorizontal size={18} />
+              </button>
+              {isProjectMenuOpen ? (
+                <div className="project-menu" role="menu">
+                  <button
+                    className="project-menu-item"
+                    role="menuitem"
+                    type="button"
+                    onClick={() => {
+                      setIsProjectMenuOpen(false);
+                      setIsProjectModalOpen(true);
+                    }}
+                  >
+                    プロジェクト作成
+                  </button>
+                  <button
+                    className="project-menu-item project-menu-item-danger"
+                    disabled={!selectedProject}
+                    role="menuitem"
+                    type="button"
+                    onClick={() => {
+                      if (!selectedProject) {
+                        return;
+                      }
+
+                      setIsProjectMenuOpen(false);
+                      setProjectToDelete(selectedProject);
+                    }}
+                  >
+                    プロジェクト削除
+                  </button>
+                  <button
+                    className="project-menu-item"
+                    role="menuitem"
+                    type="button"
+                    onClick={() => {
+                      setIsProjectMenuOpen(false);
+                      void loadMembers();
+                      setIsInviteModalOpen(true);
+                    }}
+                  >
+                    共有
+                  </button>
+                </div>
+              ) : null}
+            </div>
+          </div>
         </div>
         <div className="topbar-actions">
-          <div className="tooltip-wrap">
-            <button
-              aria-label="招待"
-              className="topbar-icon-button topbar-icon-button-primary"
-              type="button"
-              onClick={() => {
-                void loadMembers();
-                setIsInviteModalOpen(true);
-              }}
-            >
-              <Copy size={17} />
-            </button>
-            <span className="tooltip" role="tooltip">
-              招待
-            </span>
-          </div>
           <div className="tooltip-wrap">
             <button
               aria-label="アカウント"
@@ -964,195 +1023,112 @@ export function Dashboard() {
       </header>
 
       <div className="page">
-        <section className="toolbar">
-          <div className="toolbar-group">
-            <select
-              className="select"
-              value={statusFilter}
-              onChange={(event) =>
-                setStatusFilter(event.target.value as ReportStatus | "all")
-              }
-            >
-              <option value="all">すべてのステータス</option>
-              {statuses.map((status) => (
-                <option key={status} value={status}>
-                  {statusLabels[status]}
-                </option>
-              ))}
-            </select>
-            <select
-              className="select"
-              value={selectedProjectId}
-              onChange={(event) => setSelectedProjectId(event.target.value)}
-            >
-              <option value="all">すべてのプロジェクト</option>
-              {projects.map((project) => (
-                <option key={project.id} value={project.id}>
-                  {displayProjectName(project.name)}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="toolbar-group">
-            <button
-              className="button"
-              type="button"
-              onClick={() => {
-                setIsProjectModalOpen(true);
-              }}
-            >
-              <Plus size={16} />
-              プロジェクト作成
-            </button>
-            <button
-              className="button button-danger"
-              disabled={!selectedProject}
-              type="button"
-              onClick={() => {
-                if (!selectedProject) {
-                  return;
-                }
-
-                setProjectToDelete(selectedProject);
-              }}
-            >
-              <Trash2 size={16} />
-              プロジェクト削除
-            </button>
-          </div>
-        </section>
-
         <section
           className="mail-split"
           style={{ "--split-left": `${splitLeftPercent}%` } as SplitPaneStyle}
         >
           <div className="mail-list-pane">
-            <div className="table-wrap">
-              <table className="table">
-                <thead>
-                  <tr>
-                    <th>内容</th>
-                    <th aria-sort={getAriaSort("status")}>
-                      <button
-                        aria-label={`ステータスで並び替え、現在は${getSortLabel("status")}`}
-                        className="table-sort-button"
-                        type="button"
-                        onClick={() => handleSortChange("status")}
-                      >
-                        <span>ステータス</span>
-                        {renderSortIcon("status")}
-                      </button>
-                    </th>
-                    <th>投稿者</th>
-                    <th aria-sort={getAriaSort("updated_at")}>
-                      <button
-                        aria-label={`更新日時で並び替え、現在は${getSortLabel("updated_at")}`}
-                        className="table-sort-button"
-                        type="button"
-                        onClick={() => handleSortChange("updated_at")}
-                      >
-                        <span>更新日時</span>
-                        {renderSortIcon("updated_at")}
-                      </button>
-                    </th>
-                    <th className="table-action-column">
-                      <span className="sr-only">操作</span>
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {visibleReports.map((report) => (
-                    <tr
-                      className={
-                        report.id === selectedReportId
-                          ? "table-row table-row-selected"
-                          : "table-row"
-                      }
-                      key={report.id}
-                      onClick={() => setSelectedReportId(report.id)}
+            <div className="report-list-panel">
+              <div className="report-list-controls">
+                <div className="report-search-row">
+                  <input
+                    aria-label="内容を検索"
+                    className="report-search-input"
+                    placeholder="検索"
+                    value={reportSearchQuery}
+                    onChange={(event) => setReportSearchQuery(event.target.value)}
+                  />
+                  <div className="report-sort-menu-wrap">
+                    <button
+                      aria-expanded={isReportSortMenuOpen}
+                      aria-haspopup="menu"
+                      aria-label="並び替え"
+                      className="report-sort-button"
+                      type="button"
+                      onClick={() => setIsReportSortMenuOpen((isOpen) => !isOpen)}
                     >
-                      <td>
-                        <div className="title-cell">
-                          <strong>
-                            {report.description || report.page_title || "コメントなし"}
-                          </strong>
-                        </div>
-                      </td>
-                      <td>
-                        <div className="status-menu-wrap">
+                      <ArrowDownUp size={16} />
+                    </button>
+                    {isReportSortMenuOpen ? (
+                      <div className="report-sort-menu" role="menu">
+                        {[
+                          ["updated_at:desc", "更新日時 新しい順"],
+                          ["updated_at:asc", "更新日時 古い順"],
+                          ["status:asc", "ステータス 昇順"],
+                          ["status:desc", "ステータス 降順"]
+                        ].map(([value, label]) => (
                           <button
-                            aria-expanded={openStatusMenuReportId === report.id}
-                            aria-haspopup="menu"
-                            className={`status status-button ${statusClass(report.status)}`}
+                            className={
+                              `${reportSort.key}:${reportSort.direction}` === value
+                                ? "report-sort-menu-item report-sort-menu-item-active"
+                                : "report-sort-menu-item"
+                            }
+                            key={value}
+                            role="menuitem"
                             type="button"
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              setOpenStatusMenuReportId((currentId) =>
-                                currentId === report.id ? null : report.id
-                              );
+                            onClick={() => {
+                              handleSortSelectChange(value as ReportSortValue);
+                              setIsReportSortMenuOpen(false);
                             }}
                           >
-                            {statusLabels[report.status]}
+                            {label}
                           </button>
-                          {openStatusMenuReportId === report.id ? (
-                            <div className="status-menu" role="menu">
-                              {statuses.map((nextStatus) => (
-                                <button
-                                  className="status-menu-item"
-                                  key={nextStatus}
-                                  role="menuitem"
-                                  type="button"
-                                  onClick={(event) => {
-                                    event.stopPropagation();
-                                    handleTableStatusChange(report, nextStatus);
-                                  }}
-                                >
-                                  <span className={statusClass(nextStatus)}>
-                                    {statusLabels[nextStatus]}
-                                  </span>
-                                </button>
-                              ))}
-                            </div>
-                          ) : null}
-                        </div>
-                      </td>
-                      <td>{displayUserName(report.created_by, profilesById)}</td>
-                      <td>{formatDate(report.updated_at)}</td>
-                      <td className="table-action-column">
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
+              </div>
+              <div className="report-list">
+                {reportGroups.map((group) => (
+                  <section aria-label={group.url} className="report-list-group" key={group.url}>
+                    <a
+                      className="report-list-url"
+                      href={group.url}
+                      rel="noreferrer"
+                      target="_blank"
+                      title={group.url}
+                    >
+                      {group.url}
+                    </a>
+                    <div className="report-list-group-items" role="list">
+                      {group.reports.map((report) => (
                         <button
-                          aria-label="コメントを削除"
-                          className="row-icon-button"
-                          title="削除"
+                          className={
+                            report.id === selectedReportId
+                              ? "report-list-item report-list-item-selected"
+                              : "report-list-item"
+                          }
+                          key={report.id}
+                          role="listitem"
                           type="button"
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            setReportToDelete(report);
-                          }}
+                          onClick={() => setSelectedReportId(report.id)}
                         >
-                          <Trash2 size={16} />
+                          <span
+                            aria-label={statusLabels[report.status]}
+                            className={`status-dot ${statusClass(report.status)}`}
+                            title={statusLabels[report.status]}
+                          />
+                          <span className="report-list-title">{displayReportTitle(report)}</span>
                         </button>
-                      </td>
-                    </tr>
-                  ))}
-                  {!visibleReports.length ? (
-                    <tr>
-                      <td colSpan={5}>
-                        <div className="detail-empty">
-                          まだ投稿はありません。Chrome拡張からページをキャプチャしてください。
-                        </div>
-                      </td>
-                    </tr>
-                  ) : null}
-                </tbody>
-              </table>
+                      ))}
+                    </div>
+                  </section>
+                ))}
+                {!visibleReports.length ? (
+                  <div className="detail-empty">
+                    まだ投稿はありません。Chrome拡張からページをキャプチャしてください。
+                  </div>
+                ) : null}
+              </div>
             </div>
           </div>
 
           <div
             aria-label="一覧と詳細の幅を調整"
             aria-orientation="vertical"
-            aria-valuemax={75}
-            aria-valuemin={28}
+            aria-valuemax={SPLIT_MAX_PERCENT}
+            aria-valuemin={SPLIT_MIN_PERCENT}
             aria-valuenow={Math.round(splitLeftPercent)}
             className="split-resizer"
             role="separator"
@@ -1169,6 +1145,7 @@ export function Dashboard() {
               getUserName={(userId) => displayUserName(userId, profilesById)}
               loadProfilesForUsers={loadProfilesForUsers}
               onChanged={() => loadReports()}
+              onDeleteReport={setReportToDelete}
               onNotify={showToast}
               report={selectedReport}
             />
@@ -1463,6 +1440,7 @@ function ReportDetail({
   getUserName,
   loadProfilesForUsers,
   onChanged,
+  onDeleteReport,
   onNotify
 }: {
   report: Report | null;
@@ -1470,6 +1448,7 @@ function ReportDetail({
   getUserName: (userId: string | null | undefined) => string;
   loadProfilesForUsers: (userIds: Array<string | null | undefined>) => Promise<void>;
   onChanged: () => Promise<void>;
+  onDeleteReport: (report: Report) => void;
   onNotify: (message: string, tone?: ToastTone) => void;
 }) {
   const [description, setDescription] = useState("");
@@ -1676,10 +1655,22 @@ function ReportDetail({
   const screenshotUrl = getAssetUrl(report.annotated_screenshot_path);
   const screenshotFocusStyle = getScreenshotFocusStyle(report, screenshotUrl);
   const screenshotAlt = report.description || report.page_title || "投稿されたスクリーンショット";
+  const projectName = displayProjectName(report.projects?.name);
 
   return (
     <aside className="panel">
       <div className="detail-panel-body">
+        <div className="detail-actions">
+          <button
+            aria-label="コメントを削除"
+            className="row-icon-button"
+            title="削除"
+            type="button"
+            onClick={() => onDeleteReport(report)}
+          >
+            <Trash2 size={16} />
+          </button>
+        </div>
         <button
           aria-label="スクリーンショットを拡大"
           className="screenshot-button"
@@ -1755,6 +1746,57 @@ function ReportDetail({
                 </button>
               )}
             </div>
+          </div>
+
+          <div className="detail-row">
+            <span className="detail-label">投稿者</span>
+            <div className="detail-value">{getUserName(report.created_by)}</div>
+          </div>
+
+          <div className="detail-row">
+            <span className="detail-label">プロジェクト</span>
+            <div className="detail-value">{projectName || "未設定"}</div>
+          </div>
+
+          <div className="detail-row">
+            <span className="detail-label">ページタイトル</span>
+            <div className="detail-value">{report.page_title || "未設定"}</div>
+          </div>
+
+          <div className="detail-row detail-row-top">
+            <span className="detail-label">ページURL</span>
+            <div className="detail-value">
+              <a className="detail-link" href={report.page_url} rel="noreferrer" target="_blank">
+                {report.page_url}
+              </a>
+            </div>
+          </div>
+
+          <div className="detail-row">
+            <span className="detail-label">作成日時</span>
+            <div className="detail-value">{formatDate(report.created_at)}</div>
+          </div>
+
+          <div className="detail-row">
+            <span className="detail-label">更新日時</span>
+            <div className="detail-value">{formatDate(report.updated_at)}</div>
+          </div>
+
+          <div className="detail-row">
+            <span className="detail-label">ビューポート</span>
+            <div className="detail-value">
+              {report.viewport_width} x {report.viewport_height}
+            </div>
+          </div>
+
+          <div className="detail-row">
+            <span className="detail-label">DPR</span>
+            <div className="detail-value">{report.device_pixel_ratio}</div>
+          </div>
+
+          <div className="detail-row detail-row-top">
+            <span className="detail-label">User Agent</span>
+            <div className="detail-value">{report.user_agent}</div>
           </div>
 
         </section>
