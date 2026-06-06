@@ -1,18 +1,25 @@
 "use client";
 
-import { CheckCircle2 } from "lucide-react";
 import { useParams, useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { getSupabaseClient, isSupabaseConfigured } from "@/lib/supabase";
+
+type InvitationInfo = {
+  email: string;
+};
 
 export default function InvitePage() {
   const params = useParams<{ token: string }>();
   const router = useRouter();
+  const [email, setEmail] = useState("");
+  const [displayName, setDisplayName] = useState("");
+  const [password, setPassword] = useState("");
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    async function acceptInvite() {
+    async function loadInvitation() {
       if (!isSupabaseConfigured()) {
         setMessage("Supabase設定が見つかりません。");
         setLoading(false);
@@ -24,12 +31,22 @@ export default function InvitePage() {
         data: { session }
       } = await supabase.auth.getSession();
 
-      if (!session) {
-        router.replace(`/login?next=/invite/${params.token}`);
+      if (session) {
+        const { error } = await supabase.rpc("accept_invitation", {
+          invitation_token: params.token
+        });
+
+        if (error) {
+          setMessage(error.message);
+          setLoading(false);
+          return;
+        }
+
+        router.replace("/");
         return;
       }
 
-      const { error } = await supabase.rpc("accept_invitation", {
+      const { data, error } = await supabase.rpc("get_invitation_info", {
         invitation_token: params.token
       });
 
@@ -39,22 +56,131 @@ export default function InvitePage() {
         return;
       }
 
-      router.replace("/");
+      const invitation = Array.isArray(data)
+        ? (data[0] as InvitationInfo | undefined)
+        : (data as InvitationInfo | null);
+      setEmail(invitation?.email ?? "");
+      setLoading(false);
     }
 
-    acceptInvite();
+    loadInvitation();
   }, [params.token, router]);
 
-  return loading ? (
-    <main aria-label="読み込み中" className="loading-shell">
-      <span aria-hidden="true" className="loading-spinner" />
-    </main>
-  ) : (
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setBusy(true);
+    setMessage("");
+
+    try {
+      const supabase = getSupabaseClient();
+      const result = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: {
+            display_name: displayName.trim()
+          },
+          emailRedirectTo: window.location.href
+        }
+      });
+
+      if (result.error) {
+        setMessage(result.error.message);
+        return;
+      }
+
+      if (!result.data.session) {
+        setMessage("登録が完了しました。メールを確認してください。");
+        return;
+      }
+
+      const session = result.data.session;
+      const { error: profileError } = await supabase.from("profiles").upsert(
+        {
+          id: session.user.id,
+          display_name: displayName.trim(),
+          email: session.user.email ?? email
+        },
+        { onConflict: "id" }
+      );
+
+      if (profileError) {
+        setMessage(profileError.message);
+        return;
+      }
+
+      const { error: inviteError } = await supabase.rpc("accept_invitation", {
+        invitation_token: params.token
+      });
+
+      if (inviteError) {
+        setMessage(inviteError.message);
+        return;
+      }
+
+      router.replace("/");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "登録に失敗しました。");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (loading) {
+    return (
+      <main aria-label="読み込み中" className="loading-shell">
+        <span aria-hidden="true" className="loading-spinner" />
+      </main>
+    );
+  }
+
+  return (
     <main className="auth-shell">
       <section className="auth-card">
-        <CheckCircle2 size={28} />
-        <h1>招待</h1>
-        <p className="subtitle">{message}</p>
+        <h1>23のワークスペースに招待されました！</h1>
+
+        {email ? (
+          <form className="panel-body" onSubmit={handleSubmit}>
+            <div className="form-row">
+              <label htmlFor="email">メールアドレス</label>
+              <input
+                className="input"
+                id="email"
+                readOnly
+                type="email"
+                value={email}
+              />
+            </div>
+            <div className="form-row">
+              <label htmlFor="password">パスワード</label>
+              <input
+                className="input"
+                id="password"
+                minLength={6}
+                type="password"
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+                required
+              />
+            </div>
+            <div className="form-row">
+              <label htmlFor="display-name">あなたの名前</label>
+              <input
+                className="input"
+                id="display-name"
+                value={displayName}
+                onChange={(event) => setDisplayName(event.target.value)}
+                required
+              />
+            </div>
+            {message ? <div className="notice">{message}</div> : null}
+            <button className="button button-primary" disabled={busy} type="submit">
+              {busy ? "処理中..." : "上記の内容で登録"}
+            </button>
+          </form>
+        ) : (
+          <div className="notice">{message}</div>
+        )}
       </section>
     </main>
   );
