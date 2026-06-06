@@ -40,6 +40,7 @@ import {
 type Organization = {
   id: string;
   name: string;
+  invite_token: string;
 };
 
 type Project = {
@@ -88,6 +89,12 @@ type Comment = {
 type LoadState = "loading" | "ready" | "error";
 type ReportSortKey = "status" | "updated_at";
 type SortDirection = "asc" | "desc";
+type ToastTone = "default" | "error";
+type ToastState = {
+  id: number;
+  message: string;
+  tone: ToastTone;
+};
 type ReportSort = {
   key: ReportSortKey;
   direction: SortDirection;
@@ -215,25 +222,18 @@ export function Dashboard() {
   const [reports, setReports] = useState<Report[]>([]);
   const [selectedReportId, setSelectedReportId] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<ReportStatus | "all">("all");
-  const [inviteEmail, setInviteEmail] = useState("");
-  const [inviteUrl, setInviteUrl] = useState("");
-  const [inviteMessage, setInviteMessage] = useState("");
   const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
   const [members, setMembers] = useState<Profile[]>([]);
   const [newProjectName, setNewProjectName] = useState("");
-  const [projectMessage, setProjectMessage] = useState("");
   const [isProjectModalOpen, setIsProjectModalOpen] = useState(false);
   const [projectToDelete, setProjectToDelete] = useState<Project | null>(null);
-  const [projectDeleteMessage, setProjectDeleteMessage] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [accountEmail, setAccountEmail] = useState("");
-  const [accountMessage, setAccountMessage] = useState("");
   const [isAccountModalOpen, setIsAccountModalOpen] = useState(false);
-  const [profileMessage, setProfileMessage] = useState("");
   const [profilesById, setProfilesById] = useState<Record<string, Profile>>({});
   const [reportToDelete, setReportToDelete] = useState<Report | null>(null);
-  const [deleteMessage, setDeleteMessage] = useState("");
   const [openStatusMenuReportId, setOpenStatusMenuReportId] = useState<string | null>(null);
+  const [toast, setToast] = useState<ToastState | null>(null);
   const [reportSort, setReportSort] = useState<ReportSort>({
     key: "updated_at",
     direction: "desc"
@@ -283,6 +283,14 @@ export function Dashboard() {
     [selectedReportId, visibleReports]
   );
 
+  function showToast(messageText: string, tone: ToastTone = "default") {
+    setToast({
+      id: Date.now(),
+      message: messageText,
+      tone
+    });
+  }
+
   useEffect(() => {
     if (
       selectedReportId &&
@@ -291,6 +299,19 @@ export function Dashboard() {
       setSelectedReportId(null);
     }
   }, [selectedReportId, visibleReports]);
+
+  useEffect(() => {
+    if (!toast) {
+      return;
+    }
+
+    const timeout = window.setTimeout(
+      () => setToast(null),
+      toast.tone === "error" ? 5000 : 3000
+    );
+
+    return () => window.clearTimeout(timeout);
+  }, [toast]);
 
   function handleSortChange(key: ReportSortKey) {
     setReportSort((currentSort) => {
@@ -325,7 +346,7 @@ export function Dashboard() {
       .single();
 
     if (error) {
-      setMessage(error.message);
+      showToast(error.message, "error");
       return;
     }
 
@@ -441,7 +462,7 @@ export function Dashboard() {
       .in("id", ids);
 
     if (error) {
-      setProfileMessage("名前の読み込みにはSupabaseで最新SQLの実行が必要です。");
+      showToast("名前の読み込みにはSupabaseで最新SQLの実行が必要です。", "error");
       return;
     }
 
@@ -460,7 +481,7 @@ export function Dashboard() {
       .eq("organization_id", organizationId);
 
     if (membershipsError) {
-      setInviteMessage(membershipsError.message);
+      showToast(membershipsError.message, "error");
       return;
     }
 
@@ -479,7 +500,7 @@ export function Dashboard() {
       .in("id", memberIds);
 
     if (profilesError) {
-      setInviteMessage(profilesError.message);
+      showToast(profilesError.message, "error");
       return;
     }
 
@@ -514,7 +535,7 @@ export function Dashboard() {
 
     if (error) {
       setDisplayName(fallbackName);
-      setProfileMessage("名前を保存するにはSupabaseで最新SQLを実行してください。");
+      showToast("名前を保存するにはSupabaseで最新SQLを実行してください。", "error");
       return;
     }
 
@@ -522,7 +543,6 @@ export function Dashboard() {
       const profile = data as Profile;
       setDisplayName(profile.display_name);
       mergeProfiles([profile]);
-      setProfileMessage("");
       return;
     }
 
@@ -538,14 +558,13 @@ export function Dashboard() {
 
     if (insertError) {
       setDisplayName(fallbackName);
-      setProfileMessage("名前を保存するにはSupabaseで最新SQLを実行してください。");
+      showToast("名前を保存するにはSupabaseで最新SQLを実行してください。", "error");
       return;
     }
 
     const profile = insertedProfile as Profile;
     setDisplayName(profile.display_name);
     mergeProfiles([profile]);
-    setProfileMessage("");
   }
 
   async function loadDashboard() {
@@ -622,7 +641,7 @@ export function Dashboard() {
       await Promise.all([
         supabase
           .from("organizations")
-          .select("id, name")
+          .select("id, name, invite_token")
           .eq("id", organizationId)
           .single(),
         supabase
@@ -658,7 +677,7 @@ export function Dashboard() {
       .order("updated_at", { ascending: false });
 
     if (error) {
-      setMessage(error.message);
+      showToast(error.message, "error");
       return;
     }
 
@@ -685,36 +704,23 @@ export function Dashboard() {
 
   async function handleCreateInvite(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setInviteMessage("");
 
-    if (!organization || !user) {
+    if (!organization) {
       return;
     }
 
-    const token = `${crypto.randomUUID()}-${crypto.randomUUID()}`;
-    const supabase = getSupabaseClient();
-    const { error } = await supabase.from("invitations").insert({
-      organization_id: organization.id,
-      email: inviteEmail,
-      token,
-      created_by: user.id
-    });
-
-    if (error) {
-      setInviteMessage(error.message);
-      return;
-    }
-
-    const url = `${getPublicAppUrl().replace(/\/$/, "")}/invite/${token}`;
-    setInviteUrl(url);
-    setInviteEmail("");
+    const url = `${getPublicAppUrl().replace(/\/$/, "")}/invite/${organization.invite_token}`;
     setIsInviteModalOpen(false);
-    await navigator.clipboard?.writeText(url);
+    try {
+      await navigator.clipboard?.writeText(url);
+      showToast("招待リンクをコピーしました。");
+    } catch {
+      showToast("招待リンクをコピーできませんでした。", "error");
+    }
   }
 
   async function handleCreateProject(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setProjectMessage("");
 
     if (!organization || !user || !newProjectName.trim()) {
       return;
@@ -728,13 +734,13 @@ export function Dashboard() {
     });
 
     if (error) {
-      setProjectMessage(error.message);
+      showToast(error.message, "error");
       return;
     }
 
     setNewProjectName("");
     setIsProjectModalOpen(false);
-    setMessage("プロジェクトを作成しました。");
+    showToast("プロジェクトを作成しました。");
     await loadDashboard();
   }
 
@@ -745,8 +751,6 @@ export function Dashboard() {
       return;
     }
 
-    setAccountMessage("");
-    setProfileMessage("");
     const nextDisplayName = displayName.trim();
     const nextEmail = accountEmail.trim();
     const supabase = getSupabaseClient();
@@ -757,7 +761,7 @@ export function Dashboard() {
       });
 
       if (updateError) {
-        setAccountMessage(updateError.message);
+        showToast(updateError.message, "error");
         return;
       }
 
@@ -780,7 +784,7 @@ export function Dashboard() {
       .single();
 
     if (error) {
-      setProfileMessage(error.message);
+      showToast(error.message, "error");
       return;
     }
 
@@ -788,7 +792,7 @@ export function Dashboard() {
     setDisplayName(profile.display_name);
     setAccountEmail(profile.email ?? nextEmail);
     mergeProfiles([profile]);
-    setAccountMessage(
+    showToast(
       nextEmail && nextEmail !== user.email
         ? "保存しました。メールアドレス変更の確認メールが届く場合があります。"
         : "保存しました。"
@@ -800,7 +804,6 @@ export function Dashboard() {
       return;
     }
 
-    setDeleteMessage("");
     const supabase = getSupabaseClient();
     const targetReport = reportToDelete;
     const assetPaths = [
@@ -815,7 +818,7 @@ export function Dashboard() {
       .eq("organization_id", targetReport.organization_id);
 
     if (error) {
-      setDeleteMessage(error.message);
+      showToast(error.message, "error");
       return;
     }
 
@@ -838,7 +841,6 @@ export function Dashboard() {
       return;
     }
 
-    setProjectDeleteMessage("");
     const supabase = getSupabaseClient();
     const targetProject = projectToDelete;
 
@@ -849,7 +851,7 @@ export function Dashboard() {
       .eq("project_id", targetProject.id);
 
     if (reportsError) {
-      setProjectDeleteMessage(reportsError.message);
+      showToast(reportsError.message, "error");
       return;
     }
 
@@ -867,7 +869,7 @@ export function Dashboard() {
       .eq("organization_id", organization.id);
 
     if (error) {
-      setProjectDeleteMessage(error.message);
+      showToast(error.message, "error");
       return;
     }
 
@@ -912,6 +914,13 @@ export function Dashboard() {
 
   return (
     <main className="app-shell">
+      {toast ? (
+        <div className="toast-viewport" role="status" aria-live="polite">
+          <div className={toast.tone === "error" ? "toast toast-error" : "toast"}>
+            {toast.message}
+          </div>
+        </div>
+      ) : null}
       <header className="topbar">
         <div className="brand">
           <span className="brand-mark" aria-hidden="true">
@@ -926,7 +935,6 @@ export function Dashboard() {
               className="topbar-icon-button topbar-icon-button-primary"
               type="button"
               onClick={() => {
-                setInviteMessage("");
                 void loadMembers();
                 setIsInviteModalOpen(true);
               }}
@@ -943,7 +951,6 @@ export function Dashboard() {
               className="topbar-icon-button"
               type="button"
               onClick={() => {
-                setAccountMessage("");
                 setIsAccountModalOpen(true);
               }}
             >
@@ -957,14 +964,6 @@ export function Dashboard() {
       </header>
 
       <div className="page">
-        {inviteUrl ? (
-          <div className="notice">
-            招待リンクをコピーしました。
-          </div>
-        ) : null}
-        {profileMessage ? <div className="notice">{profileMessage}</div> : null}
-        {message ? <div className="notice">{message}</div> : null}
-
         <section className="toolbar">
           <div className="toolbar-group">
             <select
@@ -999,7 +998,6 @@ export function Dashboard() {
               className="button"
               type="button"
               onClick={() => {
-                setProjectMessage("");
                 setIsProjectModalOpen(true);
               }}
             >
@@ -1015,7 +1013,6 @@ export function Dashboard() {
                   return;
                 }
 
-                setProjectDeleteMessage("");
                 setProjectToDelete(selectedProject);
               }}
             >
@@ -1129,7 +1126,6 @@ export function Dashboard() {
                           type="button"
                           onClick={(event) => {
                             event.stopPropagation();
-                            setDeleteMessage("");
                             setReportToDelete(report);
                           }}
                         >
@@ -1173,6 +1169,7 @@ export function Dashboard() {
               getUserName={(userId) => displayUserName(userId, profilesById)}
               loadProfilesForUsers={loadProfilesForUsers}
               onChanged={() => loadReports()}
+              onNotify={showToast}
               report={selectedReport}
             />
           </div>
@@ -1201,18 +1198,6 @@ export function Dashboard() {
               </button>
             </div>
             <form className="modal-body" onSubmit={handleCreateInvite}>
-              <div className="form-row">
-                <label htmlFor="invite-email">メールアドレス</label>
-                <input
-                  className="input"
-                  id="invite-email"
-                  placeholder="招待する人のメールアドレス"
-                  type="email"
-                  value={inviteEmail}
-                  onChange={(event) => setInviteEmail(event.target.value)}
-                  required
-                />
-              </div>
               <section className="member-section" aria-label="メンバー">
                 <h3>メンバー</h3>
                 {members.length ? (
@@ -1235,7 +1220,6 @@ export function Dashboard() {
                   <p className="member-empty">メンバーはいません。</p>
                 )}
               </section>
-              {inviteMessage ? <div className="notice">{inviteMessage}</div> : null}
               <div className="modal-actions">
                 <button
                   className="button"
@@ -1246,7 +1230,7 @@ export function Dashboard() {
                 </button>
                 <button className="button button-primary" type="submit">
                   <Copy size={16} />
-                  招待リンクを作成
+                  招待リンクをコピー
                 </button>
               </div>
             </form>
@@ -1284,7 +1268,6 @@ export function Dashboard() {
                   reportToDelete.page_title ||
                   "コメントなし"}
               </div>
-              {deleteMessage ? <div className="notice">{deleteMessage}</div> : null}
               <div className="modal-actions">
                 <button
                   className="button"
@@ -1337,7 +1320,6 @@ export function Dashboard() {
                   required
                 />
               </div>
-              {projectMessage ? <div className="notice">{projectMessage}</div> : null}
               <div className="modal-actions">
                 <button
                   className="button"
@@ -1387,9 +1369,6 @@ export function Dashboard() {
                 {reports.filter((report) => report.project_id === projectToDelete.id).length}
                 件のコメント
               </div>
-              {projectDeleteMessage ? (
-                <div className="notice">{projectDeleteMessage}</div>
-              ) : null}
               <div className="modal-actions">
                 <button
                   className="button"
@@ -1451,7 +1430,6 @@ export function Dashboard() {
                   required
                 />
               </div>
-              {accountMessage ? <div className="notice">{accountMessage}</div> : null}
               <div className="modal-actions modal-actions-between">
                 <button className="button button-danger" type="button" onClick={handleLogout}>
                   <LogOut size={16} />
@@ -1484,19 +1462,20 @@ function ReportDetail({
   getAssetUrl,
   getUserName,
   loadProfilesForUsers,
-  onChanged
+  onChanged,
+  onNotify
 }: {
   report: Report | null;
   getAssetUrl: (path: string) => string;
   getUserName: (userId: string | null | undefined) => string;
   loadProfilesForUsers: (userIds: Array<string | null | undefined>) => Promise<void>;
   onChanged: () => Promise<void>;
+  onNotify: (message: string, tone?: ToastTone) => void;
 }) {
   const [description, setDescription] = useState("");
   const [status, setStatus] = useState<ReportStatus>("open");
   const [comments, setComments] = useState<Comment[]>([]);
   const [commentBody, setCommentBody] = useState("");
-  const [message, setMessage] = useState("");
   const [editingField, setEditingField] = useState<"status" | "description" | null>(
     null
   );
@@ -1517,7 +1496,6 @@ function ReportDetail({
     setEditingCommentId(null);
     setEditingCommentBody("");
     setIsScreenshotModalOpen(false);
-    setMessage("");
     loadComments(report.id);
   }, [report?.id]);
 
@@ -1545,7 +1523,7 @@ function ReportDetail({
       .order("created_at", { ascending: true });
 
     if (error) {
-      setMessage(error.message);
+      onNotify(error.message, "error");
       return;
     }
 
@@ -1574,11 +1552,10 @@ function ReportDetail({
       .eq("id", report.id);
 
     if (error) {
-      setMessage(error.message);
+      onNotify(error.message, "error");
       return false;
     }
 
-    setMessage("");
     await onChanged();
     return true;
   }
@@ -1626,7 +1603,7 @@ function ReportDetail({
     });
 
     if (error) {
-      setMessage(error.message);
+      onNotify(error.message, "error");
       return;
     }
 
@@ -1653,11 +1630,10 @@ function ReportDetail({
       .eq("report_id", report.id);
 
     if (error) {
-      setMessage(error.message);
+      onNotify(error.message, "error");
       return;
     }
 
-    setMessage("");
     setEditingCommentId(null);
     setEditingCommentBody("");
     await loadComments(report.id);
@@ -1676,11 +1652,10 @@ function ReportDetail({
       .eq("report_id", report.id);
 
     if (error) {
-      setMessage(error.message);
+      onNotify(error.message, "error");
       return;
     }
 
-    setMessage("");
     setOpenCommentMenuId(null);
     setEditingCommentId((currentId) => (currentId === commentId ? null : currentId));
     setEditingCommentBody("");
@@ -1782,7 +1757,6 @@ function ReportDetail({
             </div>
           </div>
 
-          {message ? <div className="notice">{message}</div> : null}
         </section>
 
         <section className="thread-section">

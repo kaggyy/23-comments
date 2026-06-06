@@ -4,10 +4,6 @@ import { useParams, useRouter } from "next/navigation";
 import { FormEvent, useEffect, useState } from "react";
 import { getSupabaseClient, isSupabaseConfigured } from "@/lib/supabase";
 
-type InvitationInfo = {
-  email: string;
-};
-
 export default function InvitePage() {
   const params = useParams<{ token: string }>();
   const router = useRouter();
@@ -17,6 +13,7 @@ export default function InvitePage() {
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [isInviteAvailable, setIsInviteAvailable] = useState(true);
 
   useEffect(() => {
     async function loadInvitation() {
@@ -52,14 +49,18 @@ export default function InvitePage() {
 
       if (error) {
         setMessage(error.message);
+        setIsInviteAvailable(false);
         setLoading(false);
         return;
       }
 
-      const invitation = Array.isArray(data)
-        ? (data[0] as InvitationInfo | undefined)
-        : (data as InvitationInfo | null);
-      setEmail(invitation?.email ?? "");
+      if (!data || (Array.isArray(data) && !data.length)) {
+        setMessage("招待が見つかりません");
+        setIsInviteAvailable(false);
+        setLoading(false);
+        return;
+      }
+
       setLoading(false);
     }
 
@@ -139,16 +140,17 @@ export default function InvitePage() {
       <section className="auth-card">
         <h1>23のワークスペースに招待されました！</h1>
 
-        {email ? (
+        {isInviteAvailable ? (
           <form className="panel-body" onSubmit={handleSubmit}>
             <div className="form-row">
               <label htmlFor="email">メールアドレス</label>
               <input
                 className="input"
                 id="email"
-                readOnly
                 type="email"
                 value={email}
+                onChange={(event) => setEmail(event.target.value)}
+                required
               />
             </div>
             <div className="form-row">
