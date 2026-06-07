@@ -791,7 +791,7 @@ h1 {
 
 .report-search-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 36px;
+  grid-template-columns: minmax(0, 1fr) 36px 36px;
   gap: 8px;
   align-items: center;
 }
@@ -811,6 +811,78 @@ h1 {
 .report-search-input:focus {
   border-color: var(--primary);
   box-shadow: 0 0 0 2px rgb(86 69 212 / 12%);
+}
+
+.report-filter-menu-wrap {
+  position: relative;
+  display: inline-flex;
+}
+
+.report-filter-button {
+  display: inline-grid;
+  width: 36px;
+  height: 36px;
+  place-items: center;
+  color: var(--charcoal);
+  background: var(--canvas);
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius-md);
+}
+
+.report-filter-button:hover,
+.report-filter-button:focus-visible {
+  background: var(--surface-soft);
+  outline: none;
+}
+
+.report-filter-button-active {
+  color: var(--primary);
+  border-color: var(--primary);
+  background: rgb(86 69 212 / 6%);
+}
+
+.report-filter-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 100;
+  display: grid;
+  width: 160px;
+  padding: 4px;
+  background: var(--canvas);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-md);
+  box-shadow: 0 12px 28px rgb(26 26 26 / 12%);
+}
+
+.report-filter-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  padding: 8px 10px;
+  color: var(--charcoal);
+  text-align: left;
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.report-filter-menu-item:hover,
+.report-filter-menu-item:focus-visible {
+  background: var(--surface-soft);
+  outline: none;
+}
+
+.report-filter-menu-item > .status-dot {
+  flex-shrink: 0;
+}
+
+.report-filter-menu-item > svg:last-child {
+  margin-left: auto;
+  color: var(--primary);
 }
 
 .report-sort-menu-wrap {
@@ -922,12 +994,11 @@ h1 {
 }
 
 .report-list-item-selected {
-  background: #eef4ff;
-  box-shadow: inset 3px 0 0 #1a73e8;
+  background: var(--surface-soft);
 }
 
 .report-list-item-selected:hover {
-  background: #eef4ff;
+  background: var(--surface-soft);
 }
 
 .report-list-title {

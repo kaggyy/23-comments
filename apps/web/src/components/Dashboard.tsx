@@ -11,6 +11,7 @@ import {
   ArrowDownUp,
   Check,
   Copy,
+  ListFilter,
   LogOut,
   MoreHorizontal,
   Pencil,
@@ -264,6 +265,8 @@ export function Dashboard() {
   const [isProjectSelectMenuOpen, setIsProjectSelectMenuOpen] = useState(false);
   const [isProjectMenuOpen, setIsProjectMenuOpen] = useState(false);
   const [isReportSortMenuOpen, setIsReportSortMenuOpen] = useState(false);
+  const [isStatusFilterMenuOpen, setIsStatusFilterMenuOpen] = useState(false);
+  const [visibleStatuses, setVisibleStatuses] = useState<ReportStatus[]>([...statuses]);
   const [isAccountMenuOpen, setIsAccountMenuOpen] = useState(false);
   const [reportSearchQuery, setReportSearchQuery] = useState("");
   const [toast, setToast] = useState<ToastState | null>(null);
@@ -275,6 +278,7 @@ export function Dashboard() {
   const projectSelectMenuRef = useRef<HTMLDivElement | null>(null);
   const projectMenuRef = useRef<HTMLDivElement | null>(null);
   const reportSortMenuRef = useRef<HTMLDivElement | null>(null);
+  const statusFilterMenuRef = useRef<HTMLDivElement | null>(null);
   const accountMenuRef = useRef<HTMLDivElement | null>(null);
 
   const selectedProject = useMemo(
@@ -288,8 +292,9 @@ export function Dashboard() {
       const matchesProject =
         selectedProjectId === "all" || report.project_id === selectedProjectId;
       const matchesSearch = !query || displayReportTitle(report).toLowerCase().includes(query);
+      const matchesStatus = visibleStatuses.includes(report.status);
 
-      return matchesProject && matchesSearch;
+      return matchesProject && matchesSearch && matchesStatus;
     });
 
     const direction = reportSort.direction === "asc" ? 1 : -1;
@@ -313,7 +318,7 @@ export function Dashboard() {
 
       return firstReport.id.localeCompare(secondReport.id);
     });
-  }, [reportSearchQuery, reportSort.direction, reportSort.key, reports, selectedProjectId]);
+  }, [reportSearchQuery, reportSort.direction, reportSort.key, reports, selectedProjectId, visibleStatuses]);
 
   const reportGroups = useMemo(() => {
     const groups: Array<{ url: string; reports: Report[] }> = [];
@@ -379,6 +384,7 @@ export function Dashboard() {
       !isProjectSelectMenuOpen &&
       !isProjectMenuOpen &&
       !isReportSortMenuOpen &&
+      !isStatusFilterMenuOpen &&
       !isAccountMenuOpen
     ) {
       return;
@@ -412,6 +418,14 @@ export function Dashboard() {
       }
 
       if (
+        isStatusFilterMenuOpen &&
+        statusFilterMenuRef.current &&
+        !statusFilterMenuRef.current.contains(target)
+      ) {
+        setIsStatusFilterMenuOpen(false);
+      }
+
+      if (
         isAccountMenuOpen &&
         accountMenuRef.current &&
         !accountMenuRef.current.contains(target)
@@ -425,6 +439,7 @@ export function Dashboard() {
         setIsProjectSelectMenuOpen(false);
         setIsProjectMenuOpen(false);
         setIsReportSortMenuOpen(false);
+        setIsStatusFilterMenuOpen(false);
         setIsAccountMenuOpen(false);
       }
     }
@@ -435,7 +450,7 @@ export function Dashboard() {
       document.removeEventListener("pointerdown", handlePointerDown);
       window.removeEventListener("keydown", handleKeyDown);
     };
-  }, [isAccountMenuOpen, isProjectMenuOpen, isProjectSelectMenuOpen, isReportSortMenuOpen]);
+  }, [isAccountMenuOpen, isProjectMenuOpen, isProjectSelectMenuOpen, isReportSortMenuOpen, isStatusFilterMenuOpen]);
 
   function handleSortSelectChange(value: ReportSortValue) {
     const [key, direction] = value.split(":") as [ReportSortKey, SortDirection];
@@ -1116,6 +1131,48 @@ export function Dashboard() {
                     value={reportSearchQuery}
                     onChange={(event) => setReportSearchQuery(event.target.value)}
                   />
+                  <div className="report-filter-menu-wrap" ref={statusFilterMenuRef}>
+                    <button
+                      aria-expanded={isStatusFilterMenuOpen}
+                      aria-haspopup="menu"
+                      aria-label="ステータスフィルター"
+                      className={
+                        visibleStatuses.length < statuses.length
+                          ? "report-filter-button report-filter-button-active"
+                          : "report-filter-button"
+                      }
+                      type="button"
+                      onClick={() => setIsStatusFilterMenuOpen((open) => !open)}
+                    >
+                      <ListFilter size={16} />
+                    </button>
+                    {isStatusFilterMenuOpen ? (
+                      <div className="report-filter-menu" role="menu">
+                        {statuses.map((s) => (
+                          <button
+                            aria-checked={visibleStatuses.includes(s)}
+                            className="report-filter-menu-item"
+                            key={s}
+                            role="menuitemcheckbox"
+                            type="button"
+                            onClick={() => {
+                              setVisibleStatuses((prev) =>
+                                prev.includes(s)
+                                  ? prev.length > 1
+                                    ? prev.filter((x) => x !== s)
+                                    : prev
+                                  : [...prev, s]
+                              );
+                            }}
+                          >
+                            <span className={`status-dot ${statusClass(s)}`} />
+                            {statusLabels[s]}
+                            {visibleStatuses.includes(s) ? <Check size={14} /> : null}
+                          </button>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
                   <div className="report-sort-menu-wrap" ref={reportSortMenuRef}>
                     <button
                       aria-expanded={isReportSortMenuOpen}
