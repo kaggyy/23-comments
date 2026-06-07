@@ -21,7 +21,7 @@ import {
   X
 } from "lucide-react";
 import { createPortal } from "react-dom";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   type RectAnnotation,
@@ -244,6 +244,25 @@ function getScreenshotFocusStyle(report: Report, imageUrl: string) {
 
 export function Dashboard() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const pathname = usePathname();
+  const selectedReportId = searchParams.get("reportId");
+
+  function selectReport(id: string | null, replace = false) {
+    const params = new URLSearchParams(searchParams.toString());
+    if (id) {
+      params.set("reportId", id);
+    } else {
+      params.delete("reportId");
+    }
+    const url = params.toString() ? `${pathname}?${params.toString()}` : pathname;
+    if (replace) {
+      router.replace(url);
+    } else {
+      router.push(url);
+    }
+  }
+
   const [user, setUser] = useState<User | null>(null);
   const [state, setState] = useState<LoadState>("loading");
   const [message, setMessage] = useState("");
@@ -251,7 +270,6 @@ export function Dashboard() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [selectedProjectId, setSelectedProjectId] = useState<string>("all");
   const [reports, setReports] = useState<Report[]>([]);
-  const [selectedReportId, setSelectedReportId] = useState<string | null>(null);
   const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
   const [members, setMembers] = useState<Profile[]>([]);
   const [newProjectName, setNewProjectName] = useState("");
@@ -363,7 +381,7 @@ export function Dashboard() {
       selectedReportId &&
       !visibleReports.some((report) => report.id === selectedReportId)
     ) {
-      setSelectedReportId(null);
+      selectReport(null, true);
     }
   }, [selectedReportId, visibleReports]);
 
@@ -792,13 +810,13 @@ export function Dashboard() {
         ...(report.assignee_ids ?? [])
       ])
     );
-    setSelectedReportId((current) => {
-      if (current && nextReports.some((report) => report.id === current)) {
-        return current;
-      }
-
-      return nextReports[0]?.id ?? null;
-    });
+    const currentId = searchParams.get("reportId");
+    const nextId = (currentId && nextReports.some((r) => r.id === currentId))
+      ? currentId
+      : (nextReports[0]?.id ?? null);
+    if (nextId !== currentId) {
+      selectReport(nextId, true);
+    }
   }
 
   useEffect(() => {
@@ -938,9 +956,9 @@ export function Dashboard() {
     setReports((currentReports) =>
       currentReports.filter((report) => report.id !== targetReport.id)
     );
-    setSelectedReportId((currentReportId) =>
-      currentReportId === targetReport.id ? null : currentReportId
-    );
+    if (selectedReportId === targetReport.id) {
+      selectReport(null, true);
+    }
     await loadReports(targetReport.organization_id);
   }
 
@@ -987,7 +1005,7 @@ export function Dashboard() {
 
     setProjectToDelete(null);
     setSelectedProjectId("all");
-    setSelectedReportId(null);
+    selectReport(null, true);
     await loadDashboard();
   }
 
@@ -1031,7 +1049,7 @@ export function Dashboard() {
       ) : null}
       <div className="page">
         <section
-          className="mail-split"
+          className={`mail-split${selectedReportId ? " mobile-detail-view" : ""}`}
           style={{ "--split-left": `${splitLeftPercent}%` } as SplitPaneStyle}
         >
           <div className="mail-list-pane">
@@ -1265,7 +1283,7 @@ export function Dashboard() {
                           <button
                             className="report-list-item-select"
                             type="button"
-                            onClick={() => setSelectedReportId(report.id)}
+                            onClick={() => selectReport(report.id)}
                           >
                             <span
                               aria-label={statusLabels[report.status]}
@@ -1377,6 +1395,13 @@ export function Dashboard() {
           />
 
           <div className="mail-detail-pane">
+            <button
+              className="mobile-back-button"
+              type="button"
+              onClick={() => selectReport(null)}
+            >
+              ← 戻る
+            </button>
             <ReportDetail
               getAssetUrl={getAssetUrl}
               getUserName={(userId) => displayUserName(userId, profilesById)}

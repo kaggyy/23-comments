@@ -1812,6 +1812,10 @@ h1 {
   font-size: 32px;
 }
 
+.mobile-back-button {
+  display: none;
+}
+
 @media (max-width: 900px) {
   .topbar {
     height: auto;
@@ -1855,12 +1859,39 @@ h1 {
     min-height: 100vh;
   }
 
+  .mail-detail-pane {
+    display: none;
+  }
+
+  .mail-split.mobile-detail-view .mail-list-pane {
+    display: none;
+  }
+
+  .mail-split.mobile-detail-view .mail-detail-pane {
+    display: block;
+    min-height: 100vh;
+  }
+
+  .mobile-back-button {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 12px 16px;
+    background: none;
+    border: none;
+    border-bottom: 1px solid var(--hairline);
+    width: 100%;
+    font-size: 15px;
+    cursor: pointer;
+    color: var(--fg);
+  }
+
   .split-resizer {
     display: none;
   }
 
   .mail-split .panel {
-    border-top: 1px solid var(--hairline);
+    border-top: none;
   }
 
   .table-wrap {
