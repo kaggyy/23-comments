@@ -949,7 +949,7 @@ h1 {
 .assignee-button {
   max-width: 100%;
   min-height: 30px;
-  padding: 4px 7px;
+  padding: 4px 7px 4px 0;
   overflow: hidden;
   color: inherit;
   text-align: left;
@@ -1033,7 +1033,7 @@ h1 {
 
 .status-open {
   color: #d63535;
-  background: var(--tint-peach);
+  background: #ffeaea;
 }
 
 .status-in-progress {
@@ -1206,7 +1206,7 @@ h1 {
 .detail-editable {
   width: 100%;
   min-height: 30px;
-  padding: 4px 7px;
+  padding: 4px 7px 4px 0;
   color: inherit;
   text-align: left;
   background: transparent;

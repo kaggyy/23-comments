@@ -263,8 +263,7 @@ function Annotator({
         return;
       }
 
-      setMessage("保存しました。");
-      setTimeout(onClose, 600);
+      onClose();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "保存に失敗しました。");
     } finally {

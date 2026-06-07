@@ -19,6 +19,11 @@ type OpenAnnotatorPayload = {
   };
 };
 
+type CaptureTarget = {
+  frameId: number;
+  pageUrl: string;
+};
+
 type SubmitPayload = {
   description: string;
   pageUrl: string;
@@ -40,6 +45,8 @@ type RuntimeMessage =
   | { type: "SELECT_PROJECT"; payload: { project: StoredProject } }
   | { type: "LOGOUT" }
   | { type: "SUBMIT_REPORT"; payload: SubmitPayload };
+
+const mobileSimulatorExtensionId = "ckejmhbmlajgoklhgbapkiccekfoccmk";
 
 chrome.runtime.onMessage.addListener((message: RuntimeMessage, _sender, sendResponse) => {
   if (message.type === "START_CAPTURE") {
@@ -87,13 +94,14 @@ async function startCapture() {
       return { ok: false, error: "アクティブなタブが見つかりません。" };
     }
 
-    if (isRestrictedUrl(tab.url)) {
+    if (isRestrictedUrl(tab.url) && !isMobileSimulatorUrl(tab.url)) {
       return {
         ok: false,
         error: "このページはChrome拡張ではキャプチャできません。"
       };
     }
 
+    const captureTarget = await getCaptureTarget(tab);
     const screenshotDataUrl = await chrome.tabs.captureVisibleTab(tab.windowId, {
       format: "png"
     });
@@ -105,9 +113,9 @@ async function startCapture() {
       tab: {
         id: tab.id,
         title: tab.title ?? "",
-        url: tab.url
+        url: captureTarget.pageUrl
       }
-    });
+    }, captureTarget.frameId);
 
     return { ok: true };
   } catch (error) {
@@ -194,31 +202,62 @@ async function getCaptureContext(settings: ExtensionSettings) {
   };
 }
 
-async function sendAnnotatorMessage(tabId: number, payload: OpenAnnotatorPayload) {
+async function getCaptureTarget(tab: chrome.tabs.Tab): Promise<CaptureTarget> {
+  if (!tab.id || !tab.url) {
+    throw new Error("アクティブなタブが見つかりません。");
+  }
+
+  if (!isMobileSimulatorUrl(tab.url)) {
+    return {
+      frameId: 0,
+      pageUrl: tab.url
+    };
+  }
+
+  const frames = await chrome.webNavigation.getAllFrames({ tabId: tab.id });
+  const frame = frames?.find(
+    (candidate) => candidate.parentFrameId !== -1 && isMobileSimulatorFrameUrl(candidate.url)
+  );
+
+  if (!frame) {
+    throw new Error("Mobile Simulator内のページに接続できませんでした。");
+  }
+
+  return {
+    frameId: frame.frameId,
+    pageUrl: frame.url
+  };
+}
+
+async function sendAnnotatorMessage(
+  tabId: number,
+  payload: OpenAnnotatorPayload,
+  frameId: number
+) {
   const message = {
     type: "OPEN_ANNOTATOR",
     payload
   };
 
   try {
-    await chrome.tabs.sendMessage(tabId, message);
+    await chrome.tabs.sendMessage(tabId, message, { frameId });
     return;
   } catch {
     await chrome.scripting.executeScript({
-      target: { tabId },
+      target: { tabId, frameIds: [frameId] },
       files: ["assets/content.js"]
     });
-    await waitForContentScript(tabId);
-    await chrome.tabs.sendMessage(tabId, message);
+    await waitForContentScript(tabId, frameId);
+    await chrome.tabs.sendMessage(tabId, message, { frameId });
   }
 }
 
-async function waitForContentScript(tabId: number) {
+async function waitForContentScript(tabId: number, frameId: number) {
   for (let attempt = 0; attempt < 10; attempt += 1) {
     try {
       const response = await chrome.tabs.sendMessage(tabId, {
         type: "PING_CONTENT"
-      });
+      }, { frameId });
 
       if (response?.ok) {
         return;
@@ -335,6 +374,14 @@ async function dataUrlToBlob(dataUrl: string) {
 
 function isRestrictedUrl(url: string) {
   return /^(chrome|chrome-extension|edge|about):/i.test(url);
+}
+
+function isMobileSimulatorUrl(url: string) {
+  return url.startsWith(`chrome-extension://${mobileSimulatorExtensionId}/`);
+}
+
+function isMobileSimulatorFrameUrl(url: string) {
+  return /^https?:/i.test(url);
 }
 
 function createReportTitle(payload: SubmitPayload) {

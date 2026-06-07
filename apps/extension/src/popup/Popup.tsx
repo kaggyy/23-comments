@@ -251,7 +251,6 @@ export function Popup() {
         return;
       }
 
-      setMessage("コメント画面を開きました。");
       window.close();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "キャプチャに失敗しました。");
@@ -367,16 +366,6 @@ export function Popup() {
             ) : null}
           </div>
         </form>
-      ) : null}
-
-      {isLoggedIn ? (
-        <section className="form opening-state">
-          <div className="notice">
-            {busy || selectedProjectId
-              ? "コメント画面を開いています..."
-              : "プロジェクトを準備しています..."}
-          </div>
-        </section>
       ) : null}
 
       {message ? <div className="notice">{message}</div> : null}

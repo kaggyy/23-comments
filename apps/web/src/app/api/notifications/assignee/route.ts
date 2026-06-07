@@ -30,10 +30,6 @@ function isUuid(value: unknown): value is string {
   return typeof value === "string" && uuidPattern.test(value);
 }
 
-function getAppUrl(request: Request) {
-  return (process.env.NEXT_PUBLIC_APP_URL || new URL(request.url).origin).replace(/\/$/, "");
-}
-
 export async function POST(request: Request) {
   if (!supabaseUrl || !supabaseAnonKey) {
     return NextResponse.json(
@@ -120,14 +116,12 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: true, skipped: true });
   }
 
-  const appUrl = getAppUrl(request);
   const reportText = report.description || "コメントなし";
   const text = [
     "担当者に設定されました。",
     "",
     reportText,
-    report.page_url,
-    appUrl
+    report.page_url
   ].join("\n");
 
   const resendResponse = await fetch("https://api.resend.com/emails", {

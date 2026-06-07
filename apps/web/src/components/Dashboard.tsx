@@ -199,15 +199,6 @@ function getRectAnnotations(annotations: unknown[]) {
   return annotations.filter(isRectAnnotation);
 }
 
-function getCenteredBackgroundPosition(focusRatio: number, zoom: number) {
-  if (zoom <= 1) {
-    return 50;
-  }
-
-  const position = (0.5 - focusRatio * zoom) / (1 - zoom);
-  return Math.min(100, Math.max(0, position * 100));
-}
-
 function getScreenshotFocusStyle(report: Report, imageUrl: string) {
   const annotations = getRectAnnotations(report.annotations);
 
@@ -243,24 +234,10 @@ function getScreenshotFocusStyle(report: Report, imageUrl: string) {
     return null;
   }
 
-  const markedWidth = bounds.maxX - bounds.minX;
-  const markedHeight = bounds.maxY - bounds.minY;
-  const padding = Math.max(72 * devicePixelRatio, Math.max(markedWidth, markedHeight) * 0.55);
-  const focusCenterX = (bounds.minX + bounds.maxX) / 2;
-  const focusCenterY = (bounds.minY + bounds.maxY) / 2;
-  const targetWidth = Math.min(imageWidth, markedWidth + padding * 2);
-  const targetHeight = Math.min(imageHeight, markedHeight + padding * 2);
-  const zoom = Math.max(
-    1,
-    Math.min(6, Math.min(imageWidth / targetWidth, imageHeight / targetHeight))
-  );
-  const positionX = getCenteredBackgroundPosition(focusCenterX / imageWidth, zoom);
-  const positionY = getCenteredBackgroundPosition(focusCenterY / imageHeight, zoom);
-
   return {
     backgroundImage: `url(${imageUrl})`,
-    backgroundPosition: `${positionX}% ${positionY}%`,
-    backgroundSize: `${zoom * 100}% auto`,
+    backgroundPosition: "center",
+    backgroundSize: "contain",
     "--focus-aspect": `${imageWidth} / ${imageHeight}`
   } satisfies ScreenshotFocusStyle;
 }
@@ -1643,7 +1620,6 @@ function ReportDetail({
     } = await supabase.auth.getSession();
 
     if (!session) {
-      onNotify("通知を送信できませんでした。", "error");
       return;
     }
 
@@ -1661,13 +1637,10 @@ function ReportDetail({
       });
 
       if (!response.ok) {
-        const result = (await response.json().catch(() => null)) as {
-          error?: string;
-        } | null;
-        throw new Error(result?.error ?? "通知を送信できませんでした。");
+        return;
       }
-    } catch (error) {
-      onNotify(error instanceof Error ? error.message : "通知を送信できませんでした。", "error");
+    } catch {
+      return;
     }
   }
 
