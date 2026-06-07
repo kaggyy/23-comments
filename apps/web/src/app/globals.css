@@ -754,7 +754,7 @@ h1 {
 .account-menu {
   position: absolute;
   bottom: calc(100% + 8px);
-  left: 0;
+  right: 0;
   z-index: 100;
   display: grid;
   width: 132px;
@@ -792,7 +792,6 @@ h1 {
   z-index: 40;
   padding: 12px;
   background: var(--canvas);
-  border-bottom: 1px solid var(--hairline);
 }
 
 .report-search-row {
