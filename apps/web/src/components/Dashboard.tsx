@@ -19,6 +19,7 @@ import {
   Trash2,
   X
 } from "lucide-react";
+import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -2136,7 +2137,8 @@ function ReportDetail({
           ) : null}
         </section>
       </div>
-      {isScreenshotModalOpen ? (
+      {isScreenshotModalOpen
+        ? createPortal(
         <div
           className="image-modal-backdrop"
           role="presentation"
@@ -2163,8 +2165,10 @@ function ReportDetail({
               src={screenshotUrl}
             />
           </section>
-        </div>
-      ) : null}
+        </div>,
+            document.body
+          )
+        : null}
     </aside>
   );
 }
