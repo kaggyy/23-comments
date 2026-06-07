@@ -816,6 +816,7 @@ h1 {
   height: 4px;
   min-height: 4px;
   padding: 0;
+  background: currentColor;
   border-radius: 9999px;
 }
 
@@ -1031,17 +1032,17 @@ h1 {
 }
 
 .status-open {
-  color: #793400;
+  color: #d63535;
   background: var(--tint-peach);
 }
 
 .status-in-progress {
-  color: #391c57;
+  color: #3575d6;
   background: var(--tint-lavender);
 }
 
 .status-resolved {
-  color: #0f6f26;
+  color: #44c548;
   background: var(--tint-mint);
 }
 
