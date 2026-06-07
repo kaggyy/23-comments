@@ -17,7 +17,6 @@ import {
   Plus,
   Save,
   Trash2,
-  UserRound,
   X
 } from "lucide-react";
 import { useRouter } from "next/navigation";
@@ -264,6 +263,7 @@ export function Dashboard() {
   const [isProjectSelectMenuOpen, setIsProjectSelectMenuOpen] = useState(false);
   const [isProjectMenuOpen, setIsProjectMenuOpen] = useState(false);
   const [isReportSortMenuOpen, setIsReportSortMenuOpen] = useState(false);
+  const [isAccountMenuOpen, setIsAccountMenuOpen] = useState(false);
   const [reportSearchQuery, setReportSearchQuery] = useState("");
   const [toast, setToast] = useState<ToastState | null>(null);
   const [reportSort, setReportSort] = useState<ReportSort>({
@@ -274,6 +274,7 @@ export function Dashboard() {
   const projectSelectMenuRef = useRef<HTMLDivElement | null>(null);
   const projectMenuRef = useRef<HTMLDivElement | null>(null);
   const reportSortMenuRef = useRef<HTMLDivElement | null>(null);
+  const accountMenuRef = useRef<HTMLDivElement | null>(null);
 
   const selectedProject = useMemo(
     () => projects.find((project) => project.id === selectedProjectId) ?? null,
@@ -340,6 +341,7 @@ export function Dashboard() {
     () => visibleReports.find((report) => report.id === selectedReportId) ?? null,
     [selectedReportId, visibleReports]
   );
+  const accountLabel = displayName.trim() || accountEmail || user?.email || (user ? shortId(user.id) : "");
 
   function showToast(messageText: string, tone: ToastTone = "default") {
     setToast({
@@ -372,7 +374,12 @@ export function Dashboard() {
   }, [toast]);
 
   useEffect(() => {
-    if (!isProjectSelectMenuOpen && !isProjectMenuOpen && !isReportSortMenuOpen) {
+    if (
+      !isProjectSelectMenuOpen &&
+      !isProjectMenuOpen &&
+      !isReportSortMenuOpen &&
+      !isAccountMenuOpen
+    ) {
       return;
     }
 
@@ -402,6 +409,14 @@ export function Dashboard() {
       ) {
         setIsReportSortMenuOpen(false);
       }
+
+      if (
+        isAccountMenuOpen &&
+        accountMenuRef.current &&
+        !accountMenuRef.current.contains(target)
+      ) {
+        setIsAccountMenuOpen(false);
+      }
     }
 
     function handleKeyDown(event: KeyboardEvent) {
@@ -409,6 +424,7 @@ export function Dashboard() {
         setIsProjectSelectMenuOpen(false);
         setIsProjectMenuOpen(false);
         setIsReportSortMenuOpen(false);
+        setIsAccountMenuOpen(false);
       }
     }
 
@@ -418,7 +434,7 @@ export function Dashboard() {
       document.removeEventListener("pointerdown", handlePointerDown);
       window.removeEventListener("keydown", handleKeyDown);
     };
-  }, [isProjectMenuOpen, isProjectSelectMenuOpen, isReportSortMenuOpen]);
+  }, [isAccountMenuOpen, isProjectMenuOpen, isProjectSelectMenuOpen, isReportSortMenuOpen]);
 
   function handleSortSelectChange(value: ReportSortValue) {
     const [key, direction] = value.split(":") as [ReportSortKey, SortDirection];
@@ -1183,20 +1199,45 @@ export function Dashboard() {
                 ) : null}
               </div>
               <div className="panel-account">
-                <div className="tooltip-wrap">
+                <div className="account-menu-wrap" ref={accountMenuRef}>
                   <button
-                    aria-label="アカウント"
-                    className="topbar-icon-button"
+                    aria-expanded={isAccountMenuOpen}
+                    aria-haspopup="menu"
+                    className="account-menu-button"
                     type="button"
                     onClick={() => {
-                      setIsAccountModalOpen(true);
+                      setIsAccountMenuOpen((isOpen) => !isOpen);
                     }}
                   >
-                    <UserRound size={17} />
+                    <span>{accountLabel}</span>
+                    <MoreHorizontal size={18} />
                   </button>
-                  <span className="tooltip" role="tooltip">
-                    アカウント
-                  </span>
+                  {isAccountMenuOpen ? (
+                    <div className="account-menu" role="menu">
+                      <button
+                        className="account-menu-item"
+                        role="menuitem"
+                        type="button"
+                        onClick={() => {
+                          setIsAccountMenuOpen(false);
+                          setIsAccountModalOpen(true);
+                        }}
+                      >
+                        編集
+                      </button>
+                      <button
+                        className="account-menu-item account-menu-item-danger"
+                        role="menuitem"
+                        type="button"
+                        onClick={() => {
+                          setIsAccountMenuOpen(false);
+                          void handleLogout();
+                        }}
+                      >
+                        ログアウト
+                      </button>
+                    </div>
+                  ) : null}
                 </div>
               </div>
             </div>
@@ -1233,12 +1274,13 @@ export function Dashboard() {
       </div>
 
       {isInviteModalOpen ? (
-        <div className="modal-backdrop">
+        <div className="modal-backdrop" onClick={() => setIsInviteModalOpen(false)}>
           <section
             aria-labelledby="invite-dialog-title"
             aria-modal="true"
             className="modal"
             role="dialog"
+            onClick={(event) => event.stopPropagation()}
           >
             <div className="modal-header">
               <div>
@@ -1277,13 +1319,6 @@ export function Dashboard() {
                 )}
               </section>
               <div className="modal-actions">
-                <button
-                  className="button"
-                  type="button"
-                  onClick={() => setIsInviteModalOpen(false)}
-                >
-                  キャンセル
-                </button>
                 <button className="button button-primary" type="submit">
                   <Copy size={16} />
                   招待リンクをコピー
@@ -1295,12 +1330,13 @@ export function Dashboard() {
       ) : null}
 
       {reportToDelete ? (
-        <div className="modal-backdrop">
+        <div className="modal-backdrop" onClick={() => setReportToDelete(null)}>
           <section
             aria-labelledby="delete-dialog-title"
             aria-modal="true"
             className="modal"
             role="dialog"
+            onClick={(event) => event.stopPropagation()}
           >
             <div className="modal-header">
               <div>
@@ -1325,13 +1361,6 @@ export function Dashboard() {
                   "コメントなし"}
               </div>
               <div className="modal-actions">
-                <button
-                  className="button"
-                  type="button"
-                  onClick={() => setReportToDelete(null)}
-                >
-                  キャンセル
-                </button>
                 <button className="button button-danger" type="button" onClick={handleDeleteReport}>
                   <Trash2 size={16} />
                   削除
@@ -1343,12 +1372,13 @@ export function Dashboard() {
       ) : null}
 
       {isProjectModalOpen ? (
-        <div className="modal-backdrop">
+        <div className="modal-backdrop" onClick={() => setIsProjectModalOpen(false)}>
           <section
             aria-labelledby="project-dialog-title"
             aria-modal="true"
             className="modal"
             role="dialog"
+            onClick={(event) => event.stopPropagation()}
           >
             <div className="modal-header">
               <div>
@@ -1377,13 +1407,6 @@ export function Dashboard() {
                 />
               </div>
               <div className="modal-actions">
-                <button
-                  className="button"
-                  type="button"
-                  onClick={() => setIsProjectModalOpen(false)}
-                >
-                  キャンセル
-                </button>
                 <button className="button button-primary" type="submit">
                   <Plus size={16} />
                   作成
@@ -1395,12 +1418,13 @@ export function Dashboard() {
       ) : null}
 
       {projectToDelete ? (
-        <div className="modal-backdrop">
+        <div className="modal-backdrop" onClick={() => setProjectToDelete(null)}>
           <section
             aria-labelledby="project-delete-dialog-title"
             aria-modal="true"
             className="modal"
             role="dialog"
+            onClick={(event) => event.stopPropagation()}
           >
             <div className="modal-header">
               <div>
@@ -1426,13 +1450,6 @@ export function Dashboard() {
                 件のコメント
               </div>
               <div className="modal-actions">
-                <button
-                  className="button"
-                  type="button"
-                  onClick={() => setProjectToDelete(null)}
-                >
-                  キャンセル
-                </button>
                 <button className="button button-danger" type="button" onClick={handleDeleteProject}>
                   <Trash2 size={16} />
                   削除
@@ -1444,12 +1461,13 @@ export function Dashboard() {
       ) : null}
 
       {isAccountModalOpen ? (
-        <div className="modal-backdrop">
+        <div className="modal-backdrop" onClick={() => setIsAccountModalOpen(false)}>
           <section
             aria-labelledby="account-dialog-title"
             aria-modal="true"
             className="modal"
             role="dialog"
+            onClick={(event) => event.stopPropagation()}
           >
             <div className="modal-header">
               <div>
@@ -1492,13 +1510,6 @@ export function Dashboard() {
                   ログアウト
                 </button>
                 <div className="modal-actions">
-                  <button
-                    className="button"
-                    type="button"
-                    onClick={() => setIsAccountModalOpen(false)}
-                  >
-                    キャンセル
-                  </button>
                   <button className="button button-primary" type="submit">
                     <Save size={16} />
                     保存

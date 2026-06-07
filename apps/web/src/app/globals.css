@@ -708,15 +708,77 @@ h1 {
   border-top: 1px solid var(--hairline);
 }
 
-.panel-account .tooltip {
-  top: auto;
-  bottom: calc(100% + 8px);
-  transform: translateX(-50%) translateY(2px);
+.account-menu-wrap {
+  position: relative;
+  width: 100%;
 }
 
-.panel-account .tooltip-wrap:hover .tooltip,
-.panel-account .tooltip-wrap:focus-within .tooltip {
-  transform: translateX(-50%) translateY(0);
+.account-menu-button {
+  display: grid;
+  width: 100%;
+  min-height: 40px;
+  grid-template-columns: minmax(0, 1fr) 24px;
+  gap: 8px;
+  align-items: center;
+  padding: 6px 8px;
+  color: var(--charcoal);
+  text-align: left;
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-md);
+}
+
+.account-menu-button span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.account-menu-button svg {
+  justify-self: center;
+}
+
+.account-menu-button:hover,
+.account-menu-button:focus-visible,
+.account-menu-button[aria-expanded="true"] {
+  background: var(--surface-soft);
+  outline: none;
+}
+
+.account-menu {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 0;
+  z-index: 100;
+  display: grid;
+  width: 132px;
+  padding: 4px;
+  background: var(--canvas);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-md);
+  box-shadow: 0 12px 28px rgb(26 26 26 / 12%);
+}
+
+.account-menu-item {
+  min-height: 34px;
+  padding: 8px 10px;
+  color: var(--charcoal);
+  text-align: left;
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.account-menu-item:hover,
+.account-menu-item:focus-visible {
+  background: var(--surface-soft);
+  outline: none;
+}
+
+.account-menu-item-danger {
+  color: var(--error);
 }
 
 .report-list-controls {
