@@ -262,6 +262,7 @@ export function Dashboard() {
   const [isAccountModalOpen, setIsAccountModalOpen] = useState(false);
   const [profilesById, setProfilesById] = useState<Record<string, Profile>>({});
   const [reportToDelete, setReportToDelete] = useState<Report | null>(null);
+  const [openReportMenuId, setOpenReportMenuId] = useState<string | null>(null);
   const [isProjectSelectMenuOpen, setIsProjectSelectMenuOpen] = useState(false);
   const [isProjectMenuOpen, setIsProjectMenuOpen] = useState(false);
   const [isReportSortMenuOpen, setIsReportSortMenuOpen] = useState(false);
@@ -451,6 +452,30 @@ export function Dashboard() {
       window.removeEventListener("keydown", handleKeyDown);
     };
   }, [isAccountMenuOpen, isProjectMenuOpen, isProjectSelectMenuOpen, isReportSortMenuOpen, isStatusFilterMenuOpen]);
+
+  useEffect(() => {
+    if (!openReportMenuId) return;
+
+    function handlePointerDown(event: PointerEvent) {
+      const target = event.target as Node;
+      if (!target?.closest(".report-list-menu-wrap")) {
+        setOpenReportMenuId(null);
+      }
+    }
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setOpenReportMenuId(null);
+      }
+    }
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [openReportMenuId]);
 
   function handleSortSelectChange(value: ReportSortValue) {
     const [key, direction] = value.split(":") as [ReportSortKey, SortDirection];
@@ -1228,7 +1253,7 @@ export function Dashboard() {
                     </a>
                     <div className="report-list-group-items" role="list">
                       {group.reports.map((report) => (
-                        <button
+                        <div
                           className={
                             report.id === selectedReportId
                               ? "report-list-item report-list-item-selected"
@@ -1236,16 +1261,49 @@ export function Dashboard() {
                           }
                           key={report.id}
                           role="listitem"
-                          type="button"
-                          onClick={() => setSelectedReportId(report.id)}
                         >
-                          <span
-                            aria-label={statusLabels[report.status]}
-                            className={`status-dot ${statusClass(report.status)}`}
-                            title={statusLabels[report.status]}
-                          />
-                          <span className="report-list-title">{displayReportTitle(report)}</span>
-                        </button>
+                          <button
+                            className="report-list-item-select"
+                            type="button"
+                            onClick={() => setSelectedReportId(report.id)}
+                          >
+                            <span
+                              aria-label={statusLabels[report.status]}
+                              className={`status-dot ${statusClass(report.status)}`}
+                              title={statusLabels[report.status]}
+                            />
+                            <span className="report-list-title">{displayReportTitle(report)}</span>
+                          </button>
+                          <div className={`report-list-menu-wrap${openReportMenuId === report.id ? " report-list-menu-open" : ""}`}>
+                            <button
+                              aria-label="メニュー"
+                              className="report-list-menu-button"
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setOpenReportMenuId((id) => id === report.id ? null : report.id);
+                              }}
+                            >
+                              <MoreHorizontal size={14} />
+                            </button>
+                            {openReportMenuId === report.id ? (
+                              <div className="report-list-menu" role="menu">
+                                <button
+                                  className="report-list-menu-item report-list-menu-item-danger"
+                                  role="menuitem"
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setOpenReportMenuId(null);
+                                    setReportToDelete(report);
+                                  }}
+                                >
+                                  削除
+                                </button>
+                              </div>
+                            ) : null}
+                          </div>
+                        </div>
                       ))}
                     </div>
                   </section>
@@ -1258,18 +1316,20 @@ export function Dashboard() {
               </div>
               <div className="panel-account">
                 <div className="account-menu-wrap" ref={accountMenuRef}>
-                  <button
-                    aria-expanded={isAccountMenuOpen}
-                    aria-haspopup="menu"
-                    className="account-menu-button"
-                    type="button"
-                    onClick={() => {
-                      setIsAccountMenuOpen((isOpen) => !isOpen);
-                    }}
-                  >
+                  <div className="account-menu-button">
                     <span>{accountLabel}</span>
-                    <MoreHorizontal size={18} />
-                  </button>
+                    <button
+                      aria-expanded={isAccountMenuOpen}
+                      aria-haspopup="menu"
+                      className="account-menu-trigger"
+                      type="button"
+                      onClick={() => {
+                        setIsAccountMenuOpen((isOpen) => !isOpen);
+                      }}
+                    >
+                      <MoreHorizontal size={18} />
+                    </button>
+                  </div>
                   {isAccountMenuOpen ? (
                     <div className="account-menu" role="menu">
                       <button
@@ -1927,17 +1987,6 @@ function ReportDetail({
   return (
     <aside className="panel">
       <div className="detail-panel-body">
-        <div className="detail-actions">
-          <button
-            aria-label="コメントを削除"
-            className="row-icon-button"
-            title="削除"
-            type="button"
-            onClick={() => onDeleteReport(report)}
-          >
-            <Trash2 size={16} />
-          </button>
-        </div>
         <button
           aria-label="スクリーンショットを拡大"
           className="screenshot-button"
