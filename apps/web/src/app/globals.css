@@ -64,7 +64,7 @@ a {
 
 .app-shell {
   min-height: 100vh;
-  background: var(--surface-soft);
+  background: var(--canvas);
 }
 
 .loading-shell {
@@ -171,7 +171,7 @@ a {
   position: absolute;
   top: calc(100% + 8px);
   left: 0;
-  z-index: 35;
+  z-index: 100;
   display: grid;
   width: max-content;
   min-width: 188px;
@@ -210,7 +210,7 @@ a {
   position: absolute;
   top: calc(100% + 8px);
   left: 0;
-  z-index: 35;
+  z-index: 100;
   display: grid;
   width: 168px;
   padding: 4px;
@@ -315,9 +315,10 @@ a {
 }
 
 .page {
-  width: min(1280px, calc(100vw - 48px));
-  margin: 0 auto;
-  padding: 32px 0 56px;
+  width: 100%;
+  min-height: 100vh;
+  margin: 0;
+  padding: 0;
 }
 
 .hero-strip {
@@ -585,18 +586,30 @@ h1 {
 .mail-split {
   display: grid;
   grid-template-columns: minmax(220px, var(--split-left)) 10px minmax(420px, 1fr);
-  min-height: calc(100vh - 168px);
+  min-height: 100vh;
+  height: 100vh;
   overflow: hidden;
   background: var(--canvas);
-  border: 1px solid var(--hairline);
-  border-radius: var(--radius-lg);
+  border: 0;
+  border-radius: 0;
 }
 
 .mail-list-pane,
 .mail-detail-pane {
   min-width: 0;
-  overflow: auto;
   background: var(--canvas);
+}
+
+.mail-list-pane {
+  position: relative;
+  z-index: 20;
+  overflow: visible;
+}
+
+.mail-detail-pane {
+  position: relative;
+  z-index: 1;
+  overflow: auto;
 }
 
 .mail-split .table-wrap,
@@ -609,6 +622,10 @@ h1 {
 
 .mail-split .table-wrap,
 .mail-split .report-list-panel {
+  overflow: visible;
+}
+
+.mail-split .table-wrap {
   overflow: auto;
 }
 
@@ -618,10 +635,11 @@ h1 {
 
 .split-resizer {
   position: relative;
+  z-index: 10;
   width: 10px;
   min-width: 10px;
   cursor: col-resize;
-  background: var(--surface-soft);
+  background: var(--canvas);
   border-right: 1px solid var(--hairline);
   border-left: 1px solid var(--hairline);
   outline: none;
@@ -652,10 +670,58 @@ h1 {
 
 .report-list-panel {
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+}
+
+.panel-nav {
+  position: relative;
+  z-index: 50;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  padding: 16px 12px 12px;
+  background: var(--canvas);
+  border-bottom: 1px solid var(--hairline);
+}
+
+.panel-nav .brand {
+  flex: 0 0 auto;
+  min-width: 0;
+}
+
+.panel-nav .project-switcher {
+  flex: 1 0 158px;
+  justify-content: flex-start;
+  margin-left: auto;
+}
+
+.panel-nav .project-select-button {
+  max-width: 100%;
+}
+
+.panel-account {
+  display: flex;
+  align-items: center;
+  padding: 12px;
+  background: var(--canvas);
+  border-top: 1px solid var(--hairline);
+}
+
+.panel-account .tooltip {
+  top: auto;
+  bottom: calc(100% + 8px);
+  transform: translateX(-50%) translateY(2px);
+}
+
+.panel-account .tooltip-wrap:hover .tooltip,
+.panel-account .tooltip-wrap:focus-within .tooltip {
+  transform: translateX(-50%) translateY(0);
 }
 
 .report-list-controls {
+  position: relative;
+  z-index: 40;
   padding: 12px;
   background: var(--canvas);
   border-bottom: 1px solid var(--hairline);
@@ -711,7 +777,7 @@ h1 {
   position: absolute;
   top: calc(100% + 8px);
   right: 0;
-  z-index: 35;
+  z-index: 100;
   display: grid;
   width: 168px;
   padding: 4px;
@@ -741,6 +807,7 @@ h1 {
 }
 
 .report-list {
+  min-height: 0;
   overflow: auto;
   padding: 8px 0 12px;
 }
@@ -973,7 +1040,7 @@ h1 {
   position: absolute;
   top: calc(100% + 6px);
   left: 0;
-  z-index: 30;
+  z-index: 100;
   display: grid;
   width: 132px;
   padding: 4px;
@@ -1078,9 +1145,16 @@ h1 {
 }
 
 .detail-empty {
+  display: grid;
+  min-height: 100%;
   padding: 36px 20px;
+  place-items: center;
   color: var(--steel);
   text-align: center;
+}
+
+.detail-empty p {
+  margin: 0;
 }
 
 .screenshot {
@@ -1400,7 +1474,7 @@ h1 {
   position: absolute;
   top: calc(100% + 4px);
   right: 0;
-  z-index: 20;
+  z-index: 100;
   display: grid;
   width: 132px;
   padding: 4px;
@@ -1553,7 +1627,7 @@ h1 {
   }
 
   .page {
-    width: min(100% - 28px, 1280px);
+    width: 100%;
   }
 
   .hero-strip,
@@ -1563,7 +1637,13 @@ h1 {
 
   .mail-split {
     display: block;
-    min-height: auto;
+    min-height: 100vh;
+    height: auto;
+  }
+
+  .mail-list-pane,
+  .mail-split .report-list-panel {
+    min-height: 100vh;
   }
 
   .split-resizer {

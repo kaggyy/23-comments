@@ -12,7 +12,6 @@ import {
   Check,
   Copy,
   LogOut,
-  MessageSquare,
   MoreHorizontal,
   Pencil,
   Plus,
@@ -272,6 +271,9 @@ export function Dashboard() {
     direction: "desc"
   });
   const [splitLeftPercent, setSplitLeftPercent] = useState(25);
+  const projectSelectMenuRef = useRef<HTMLDivElement | null>(null);
+  const projectMenuRef = useRef<HTMLDivElement | null>(null);
+  const reportSortMenuRef = useRef<HTMLDivElement | null>(null);
 
   const selectedProject = useMemo(
     () => projects.find((project) => project.id === selectedProjectId) ?? null,
@@ -368,6 +370,55 @@ export function Dashboard() {
 
     return () => window.clearTimeout(timeout);
   }, [toast]);
+
+  useEffect(() => {
+    if (!isProjectSelectMenuOpen && !isProjectMenuOpen && !isReportSortMenuOpen) {
+      return;
+    }
+
+    function handlePointerDown(event: PointerEvent) {
+      const target = event.target as Node;
+
+      if (
+        isProjectSelectMenuOpen &&
+        projectSelectMenuRef.current &&
+        !projectSelectMenuRef.current.contains(target)
+      ) {
+        setIsProjectSelectMenuOpen(false);
+      }
+
+      if (
+        isProjectMenuOpen &&
+        projectMenuRef.current &&
+        !projectMenuRef.current.contains(target)
+      ) {
+        setIsProjectMenuOpen(false);
+      }
+
+      if (
+        isReportSortMenuOpen &&
+        reportSortMenuRef.current &&
+        !reportSortMenuRef.current.contains(target)
+      ) {
+        setIsReportSortMenuOpen(false);
+      }
+    }
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setIsProjectSelectMenuOpen(false);
+        setIsProjectMenuOpen(false);
+        setIsReportSortMenuOpen(false);
+      }
+    }
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isProjectMenuOpen, isProjectSelectMenuOpen, isReportSortMenuOpen]);
 
   function handleSortSelectChange(value: ReportSortValue) {
     const [key, direction] = value.split(":") as [ReportSortKey, SortDirection];
@@ -921,137 +972,6 @@ export function Dashboard() {
           </div>
         </div>
       ) : null}
-      <header className="topbar">
-        <div className="topbar-main">
-          <div className="brand">
-            <span className="brand-mark" aria-hidden="true">
-              <img alt="" src="/icon.svg" />
-            </span>
-            <span>23 comments</span>
-          </div>
-          <div className="project-switcher">
-            <div className="project-select-menu-wrap">
-              <button
-                aria-expanded={isProjectSelectMenuOpen}
-                aria-haspopup="menu"
-                aria-label="プロジェクト"
-                className="project-select-button"
-                type="button"
-                onClick={() => {
-                  setIsProjectMenuOpen(false);
-                  setIsProjectSelectMenuOpen((isOpen) => !isOpen);
-                }}
-              >
-                {selectedProject ? displayProjectName(selectedProject.name) : "すべてのプロジェクト"}
-              </button>
-              {isProjectSelectMenuOpen ? (
-                <div className="project-select-menu" role="menu">
-                  {[
-                    { id: "all", name: "すべてのプロジェクト" },
-                    ...projects.map((project) => ({
-                      id: project.id,
-                      name: displayProjectName(project.name) ?? ""
-                    }))
-                  ].map((project) => (
-                    <button
-                      className={
-                        selectedProjectId === project.id
-                          ? "project-menu-item project-menu-item-active"
-                          : "project-menu-item"
-                      }
-                      key={project.id}
-                      role="menuitem"
-                      type="button"
-                      onClick={() => {
-                        setSelectedProjectId(project.id);
-                        setIsProjectSelectMenuOpen(false);
-                      }}
-                    >
-                      {project.name}
-                    </button>
-                  ))}
-                </div>
-              ) : null}
-            </div>
-            <div className="project-menu-wrap">
-              <button
-                aria-expanded={isProjectMenuOpen}
-                aria-haspopup="menu"
-                aria-label="プロジェクト設定"
-                className="project-menu-button"
-                type="button"
-                onClick={() => {
-                  setIsProjectSelectMenuOpen(false);
-                  setIsProjectMenuOpen((isOpen) => !isOpen);
-                }}
-              >
-                <MoreHorizontal size={18} />
-              </button>
-              {isProjectMenuOpen ? (
-                <div className="project-menu" role="menu">
-                  <button
-                    className="project-menu-item"
-                    role="menuitem"
-                    type="button"
-                    onClick={() => {
-                      setIsProjectMenuOpen(false);
-                      setIsProjectModalOpen(true);
-                    }}
-                  >
-                    プロジェクト作成
-                  </button>
-                  <button
-                    className="project-menu-item project-menu-item-danger"
-                    disabled={!selectedProject}
-                    role="menuitem"
-                    type="button"
-                    onClick={() => {
-                      if (!selectedProject) {
-                        return;
-                      }
-
-                      setIsProjectMenuOpen(false);
-                      setProjectToDelete(selectedProject);
-                    }}
-                  >
-                    プロジェクト削除
-                  </button>
-                  <button
-                    className="project-menu-item"
-                    role="menuitem"
-                    type="button"
-                    onClick={() => {
-                      setIsProjectMenuOpen(false);
-                      void loadMembers();
-                      setIsInviteModalOpen(true);
-                    }}
-                  >
-                    共有
-                  </button>
-                </div>
-              ) : null}
-            </div>
-          </div>
-        </div>
-        <div className="topbar-actions">
-          <div className="tooltip-wrap">
-            <button
-              aria-label="アカウント"
-              className="topbar-icon-button"
-              type="button"
-              onClick={() => {
-                setIsAccountModalOpen(true);
-              }}
-            >
-              <UserRound size={17} />
-            </button>
-            <span className="tooltip" role="tooltip">
-              アカウント
-            </span>
-          </div>
-        </div>
-      </header>
-
       <div className="page">
         <section
           className="mail-split"
@@ -1059,6 +979,117 @@ export function Dashboard() {
         >
           <div className="mail-list-pane">
             <div className="report-list-panel">
+              <div className="panel-nav">
+                <div className="brand">
+                  <span className="brand-mark" aria-hidden="true">
+                    <img alt="" src="/icon.svg" />
+                  </span>
+                  <span>23 comments</span>
+                </div>
+                <div className="project-switcher">
+                  <div className="project-select-menu-wrap" ref={projectSelectMenuRef}>
+                    <button
+                      aria-expanded={isProjectSelectMenuOpen}
+                      aria-haspopup="menu"
+                      aria-label="プロジェクト"
+                      className="project-select-button"
+                      type="button"
+                      onClick={() => {
+                        setIsProjectMenuOpen(false);
+                        setIsProjectSelectMenuOpen((isOpen) => !isOpen);
+                      }}
+                    >
+                      {selectedProject ? displayProjectName(selectedProject.name) : "すべてのプロジェクト"}
+                    </button>
+                    {isProjectSelectMenuOpen ? (
+                      <div className="project-select-menu" role="menu">
+                        {[
+                          { id: "all", name: "すべてのプロジェクト" },
+                          ...projects.map((project) => ({
+                            id: project.id,
+                            name: displayProjectName(project.name) ?? ""
+                          }))
+                        ].map((project) => (
+                          <button
+                            className={
+                              selectedProjectId === project.id
+                                ? "project-menu-item project-menu-item-active"
+                                : "project-menu-item"
+                            }
+                            key={project.id}
+                            role="menuitem"
+                            type="button"
+                            onClick={() => {
+                              setSelectedProjectId(project.id);
+                              setIsProjectSelectMenuOpen(false);
+                            }}
+                          >
+                            {project.name}
+                          </button>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+                  <div className="project-menu-wrap" ref={projectMenuRef}>
+                    <button
+                      aria-expanded={isProjectMenuOpen}
+                      aria-haspopup="menu"
+                      aria-label="プロジェクト設定"
+                      className="project-menu-button"
+                      type="button"
+                      onClick={() => {
+                        setIsProjectSelectMenuOpen(false);
+                        setIsProjectMenuOpen((isOpen) => !isOpen);
+                      }}
+                    >
+                      <MoreHorizontal size={18} />
+                    </button>
+                    {isProjectMenuOpen ? (
+                      <div className="project-menu" role="menu">
+                        <button
+                          className="project-menu-item"
+                          role="menuitem"
+                          type="button"
+                          onClick={() => {
+                            setIsProjectMenuOpen(false);
+                            setIsProjectModalOpen(true);
+                          }}
+                        >
+                          プロジェクト作成
+                        </button>
+                        <button
+                          className="project-menu-item project-menu-item-danger"
+                          disabled={!selectedProject}
+                          role="menuitem"
+                          type="button"
+                          onClick={() => {
+                            if (!selectedProject) {
+                              return;
+                            }
+
+                            setIsProjectMenuOpen(false);
+                            setProjectToDelete(selectedProject);
+                          }}
+                        >
+                          プロジェクト削除
+                        </button>
+                        <button
+                          className="project-menu-item"
+                          role="menuitem"
+                          type="button"
+                          onClick={() => {
+                            setIsProjectMenuOpen(false);
+                            void loadMembers();
+                            setIsInviteModalOpen(true);
+                          }}
+                        >
+                          共有
+                        </button>
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
+              </div>
               <div className="report-list-controls">
                 <div className="report-search-row">
                   <input
@@ -1068,7 +1099,7 @@ export function Dashboard() {
                     value={reportSearchQuery}
                     onChange={(event) => setReportSearchQuery(event.target.value)}
                   />
-                  <div className="report-sort-menu-wrap">
+                  <div className="report-sort-menu-wrap" ref={reportSortMenuRef}>
                     <button
                       aria-expanded={isReportSortMenuOpen}
                       aria-haspopup="menu"
@@ -1150,6 +1181,23 @@ export function Dashboard() {
                     まだ投稿はありません。Chrome拡張からページをキャプチャしてください。
                   </div>
                 ) : null}
+              </div>
+              <div className="panel-account">
+                <div className="tooltip-wrap">
+                  <button
+                    aria-label="アカウント"
+                    className="topbar-icon-button"
+                    type="button"
+                    onClick={() => {
+                      setIsAccountModalOpen(true);
+                    }}
+                  >
+                    <UserRound size={17} />
+                  </button>
+                  <span className="tooltip" role="tooltip">
+                    アカウント
+                  </span>
+                </div>
               </div>
             </div>
           </div>
@@ -1560,6 +1608,33 @@ function ReportDetail({
     };
   }, [editingField]);
 
+  useEffect(() => {
+    if (!openCommentMenuId) {
+      return;
+    }
+
+    function handlePointerDown(event: PointerEvent) {
+      const target = event.target as Element | null;
+
+      if (!target?.closest(".comment-menu-wrap")) {
+        setOpenCommentMenuId(null);
+      }
+    }
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setOpenCommentMenuId(null);
+      }
+    }
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [openCommentMenuId]);
+
   async function loadComments(reportId: string) {
     const supabase = getSupabaseClient();
     const { data, error } = await supabase
@@ -1767,7 +1842,6 @@ function ReportDetail({
     return (
       <aside className="panel">
         <div className="detail-empty">
-          <MessageSquare size={26} />
           <p>投稿を選択すると詳細とコメントを編集できます。</p>
         </div>
       </aside>
