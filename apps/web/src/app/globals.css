@@ -947,7 +947,7 @@ h1 {
 }
 
 .report-list-group + .report-list-group {
-  margin-top: 16px;
+  margin-top: 24px;
 }
 
 .report-list-url {
@@ -972,7 +972,6 @@ h1 {
 }
 
 .report-list-group-items {
-  border-top: 1px solid var(--hairline-soft);
 }
 
 .report-list-item {
@@ -986,7 +985,6 @@ h1 {
   text-align: left;
   background: var(--canvas);
   border: 0;
-  border-bottom: 1px solid var(--hairline-soft);
 }
 
 .report-list-item:hover {
@@ -1242,8 +1240,8 @@ h1 {
 }
 
 .status-resolved {
-  color: #44c548;
-  background: var(--tint-mint);
+  color: #247C27;
+  background: #D8F6D9;
 }
 
 .status-archived {
