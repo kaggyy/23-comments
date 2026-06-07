@@ -392,7 +392,7 @@ export function Dashboard() {
     }
 
     function handlePointerDown(event: PointerEvent) {
-      const target = event.target as Node;
+      const target = event.target as Element;
 
       if (
         isProjectSelectMenuOpen &&
@@ -457,7 +457,7 @@ export function Dashboard() {
     if (!openReportMenuId) return;
 
     function handlePointerDown(event: PointerEvent) {
-      const target = event.target as Node;
+      const target = event.target as Element;
       if (!target?.closest(".report-list-menu-wrap")) {
         setOpenReportMenuId(null);
       }
@@ -1713,7 +1713,7 @@ function ReportDetail({
     }
 
     function handlePointerDown(event: PointerEvent) {
-      const target = event.target as Node;
+      const target = event.target as Element;
 
       if (
         !statusMenuRef.current?.contains(target) &&
