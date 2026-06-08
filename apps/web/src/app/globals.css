@@ -603,7 +603,7 @@ h1 {
 .mail-list-pane {
   position: relative;
   z-index: 20;
-  overflow: visible;
+  overflow: hidden;
 }
 
 .mail-detail-pane {
@@ -622,7 +622,7 @@ h1 {
 
 .mail-split .table-wrap,
 .mail-split .report-list-panel {
-  overflow: visible;
+  overflow: hidden;
 }
 
 .mail-split .table-wrap {
@@ -701,6 +701,9 @@ h1 {
 }
 
 .panel-account {
+  position: sticky;
+  bottom: 0;
+  z-index: 30;
   display: flex;
   align-items: center;
   padding: 12px;

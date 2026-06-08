@@ -1647,17 +1647,11 @@ export function Dashboard() {
                   required
                 />
               </div>
-              <div className="modal-actions modal-actions-between">
-                <button className="button button-danger" type="button" onClick={handleLogout}>
-                  <LogOut size={16} />
-                  ログアウト
+              <div className="modal-actions">
+                <button className="button button-primary" type="submit">
+                  <Save size={16} />
+                  保存
                 </button>
-                <div className="modal-actions">
-                  <button className="button button-primary" type="submit">
-                    <Save size={16} />
-                    保存
-                  </button>
-                </div>
               </div>
             </form>
           </section>
