@@ -178,6 +178,18 @@ function displayDeviceInfo(report: Report) {
   return `${platform} / ${report.viewport_width} x ${report.viewport_height} / DPR ${report.device_pixel_ratio}`;
 }
 
+function normalizeUrlForGrouping(url: string): string {
+  try {
+    const parsed = new URL(url);
+    parsed.hash = "";
+    parsed.hostname = parsed.hostname.toLowerCase();
+    parsed.pathname = parsed.pathname.replace(/\/+$/, "") || "/";
+    return parsed.toString();
+  } catch {
+    return url;
+  }
+}
+
 function isRectAnnotation(annotation: unknown): annotation is RectAnnotation {
   if (!annotation || typeof annotation !== "object") {
     return false;
@@ -344,7 +356,8 @@ export function Dashboard() {
     const reportsByUrl = new Map<string, Report[]>();
 
     for (const report of visibleReports) {
-      const groupedReports = reportsByUrl.get(report.page_url);
+      const key = normalizeUrlForGrouping(report.page_url);
+      const groupedReports = reportsByUrl.get(key);
 
       if (groupedReports) {
         groupedReports.push(report);
@@ -352,7 +365,7 @@ export function Dashboard() {
       }
 
       const nextGroup = [report];
-      reportsByUrl.set(report.page_url, nextGroup);
+      reportsByUrl.set(key, nextGroup);
       groups.push({
         url: report.page_url,
         reports: nextGroup
