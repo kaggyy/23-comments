@@ -423,6 +423,7 @@ export function Dashboard() {
   const [newProjectName, setNewProjectName] = useState("");
   const [isProjectModalOpen, setIsProjectModalOpen] = useState(false);
   const [projectToDelete, setProjectToDelete] = useState<Project | null>(null);
+  const [projectDeleteConfirmation, setProjectDeleteConfirmation] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [accountEmail, setAccountEmail] = useState("");
   const [isAccountModalOpen, setIsAccountModalOpen] = useState(false);
@@ -1024,6 +1025,51 @@ export function Dashboard() {
     }
   }
 
+  async function handleDeleteMember(memberId: string) {
+    if (!organization) {
+      return;
+    }
+
+    const supabase = getSupabaseClient();
+    const reportsWithMember = reports.filter((report) =>
+      (report.assignee_ids ?? []).includes(memberId)
+    );
+
+    for (const report of reportsWithMember) {
+      const { error: reportError } = await supabase
+        .from("reports")
+        .update({
+          assignee_ids: (report.assignee_ids ?? []).filter((assigneeId) => assigneeId !== memberId)
+        })
+        .eq("id", report.id)
+        .eq("organization_id", organization.id);
+
+      if (reportError) {
+        showToast(reportError.message, "error");
+        return;
+      }
+    }
+
+    const { error } = await supabase
+      .from("memberships")
+      .delete()
+      .eq("organization_id", organization.id)
+      .eq("user_id", memberId);
+
+    if (error) {
+      showToast(error.message, "error");
+      return;
+    }
+
+    setMembers((currentMembers) => currentMembers.filter((member) => member.id !== memberId));
+    setReports((currentReports) =>
+      currentReports.map((report) => ({
+        ...report,
+        assignee_ids: (report.assignee_ids ?? []).filter((assigneeId) => assigneeId !== memberId)
+      }))
+    );
+  }
+
   async function handleCopyReportLink(report: Report) {
     const params = new URLSearchParams(searchParams.toString());
     params.set("reportId", report.id);
@@ -1192,7 +1238,7 @@ export function Dashboard() {
   }
 
   async function handleDeleteProject() {
-    if (!projectToDelete || !organization) {
+    if (!projectToDelete || !organization || projectDeleteConfirmation !== "削除") {
       return;
     }
 
@@ -1233,6 +1279,7 @@ export function Dashboard() {
     }
 
     setProjectToDelete(null);
+    setProjectDeleteConfirmation("");
     setSelectedProjectId("all");
     selectReport(null, true);
     await loadDashboard();
@@ -1758,9 +1805,24 @@ export function Dashboard() {
 
                       return (
                         <li className="member-item" key={member.id}>
-                          <span className="member-name">{memberName}</span>
-                          <span className="member-email">
-                            {member.email || "メールアドレス未登録"}
+                          <div className="member-info">
+                            <span className="member-name">{memberName}</span>
+                            <span className="member-email">
+                              {member.email || "メールアドレス未登録"}
+                            </span>
+                          </div>
+                          <span className="member-delete-wrap tooltip-wrap">
+                            <button
+                              aria-label="削除"
+                              className="member-delete-button"
+                              type="button"
+                              onClick={() => handleDeleteMember(member.id)}
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                            <span className="tooltip" role="tooltip">
+                              削除
+                            </span>
                           </span>
                         </li>
                       );
@@ -1870,7 +1932,13 @@ export function Dashboard() {
       ) : null}
 
       {projectToDelete ? (
-        <div className="modal-backdrop" onClick={() => setProjectToDelete(null)}>
+        <div
+          className="modal-backdrop"
+          onClick={() => {
+            setProjectToDelete(null);
+            setProjectDeleteConfirmation("");
+          }}
+        >
           <section
             aria-labelledby="project-delete-dialog-title"
             aria-modal="true"
@@ -1886,14 +1954,17 @@ export function Dashboard() {
                 aria-label="閉じる"
                 className="modal-close"
                 type="button"
-                onClick={() => setProjectToDelete(null)}
+                onClick={() => {
+                  setProjectToDelete(null);
+                  setProjectDeleteConfirmation("");
+                }}
               >
                 <X size={16} />
               </button>
             </div>
             <div className="modal-body">
               <p className="modal-copy">
-                このプロジェクトと、紐づくコメントをすべて削除します。
+                このプロジェクトと、紐づくコメントをすべて削除します。続けるには、以下に「削除」と入力してください。
               </p>
               <div className="delete-preview">
                 {displayProjectName(projectToDelete.name)}
@@ -1901,8 +1972,20 @@ export function Dashboard() {
                 {reports.filter((report) => report.project_id === projectToDelete.id).length}
                 件のコメント
               </div>
+              <input
+                aria-label="削除確認"
+                className="input"
+                placeholder="削除"
+                value={projectDeleteConfirmation}
+                onChange={(event) => setProjectDeleteConfirmation(event.target.value)}
+              />
               <div className="modal-actions">
-                <button className="button button-danger" type="button" onClick={handleDeleteProject}>
+                <button
+                  className="button button-danger"
+                  disabled={projectDeleteConfirmation !== "削除"}
+                  type="button"
+                  onClick={handleDeleteProject}
+                >
                   <Trash2 size={16} />
                   削除
                 </button>

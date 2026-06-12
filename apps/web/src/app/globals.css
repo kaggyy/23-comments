@@ -510,7 +510,9 @@ h1 {
 
 .member-item {
   display: grid;
-  gap: 2px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
   padding: 10px 12px;
   background: var(--canvas);
   border-bottom: 1px solid var(--hairline-soft);
@@ -526,14 +528,55 @@ h1 {
   font-weight: 600;
 }
 
+.member-info {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
 .member-email,
 .member-empty {
   color: var(--steel);
   font-size: 13px;
 }
 
+.member-name,
+.member-email {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .member-empty {
   margin: 0;
+}
+
+.member-delete-wrap {
+  opacity: 0;
+  transition: opacity 140ms ease;
+}
+
+.member-item:hover .member-delete-wrap,
+.member-item:focus-within .member-delete-wrap {
+  opacity: 1;
+}
+
+.member-delete-button {
+  display: inline-grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  color: var(--steel);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+}
+
+.member-delete-button:hover,
+.member-delete-button:focus-visible {
+  color: var(--error);
+  background: #fff5f5;
+  border-color: #f2c2c2;
 }
 
 .modal-actions {
