@@ -26,6 +26,7 @@
    - `supabase/migrations/20260604010000_profiles.sql`
    - `supabase/migrations/20260604020000_storage_delete.sql`
    - `supabase/migrations/20260612000000_roles_and_personal_invites.sql`
+   - `supabase/migrations/20260612020000_fix_membership_role_constraint.sql`
    - `supabase/migrations/20260612010000_web_push_subscriptions.sql`
 3. Storage bucket `report-assets` が作成されていることを確認します。
 4. RLS policyが有効で、ログイン済みメンバーだけがデータを扱えることを確認します。
