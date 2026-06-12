@@ -48,6 +48,9 @@ type SubmitPayload = {
   userAgent: string;
 };
 
+const uuidPattern =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
 type RuntimeMessage =
   | { type: "START_CAPTURE" }
   | { type: "PING_CONTENT" }
@@ -347,14 +350,21 @@ async function submitReport(payload: SubmitPayload) {
       return { ok: false, error: "保存前にプロジェクトを選択してください。" };
     }
 
+    const supabase = await createAuthenticatedSupabase(settings);
+    const assigneeIds = await filterProjectAssigneeIds(
+      supabase,
+      selectedProject.organizationId,
+      payload.assigneeIds
+    );
+
     const parsed = reportCreateSchema.parse({
       ...payload,
+      assigneeIds,
       title: createReportTitle(payload),
       organizationId: selectedProject.organizationId,
       projectId: selectedProject.id
     });
 
-    const supabase = await createAuthenticatedSupabase(settings);
     const {
       data: { user }
     } = await supabase.auth.getUser();
@@ -413,6 +423,33 @@ async function submitReport(payload: SubmitPayload) {
       error: error instanceof Error ? error.message : "保存に失敗しました。"
     };
   }
+}
+
+async function filterProjectAssigneeIds(
+  supabase: Awaited<ReturnType<typeof createAuthenticatedSupabase>>,
+  organizationId: string,
+  assigneeIds: string[] | undefined
+) {
+  const candidates = Array.from(
+    new Set((assigneeIds ?? []).filter((assigneeId) => uuidPattern.test(assigneeId)))
+  ).slice(0, 1);
+
+  if (!candidates.length) {
+    return [];
+  }
+
+  const { data, error } = await supabase
+    .from("memberships")
+    .select("user_id")
+    .eq("organization_id", organizationId)
+    .in("user_id", candidates);
+
+  if (error) {
+    throw error;
+  }
+
+  const memberIds = new Set((data ?? []).map((membership) => membership.user_id));
+  return candidates.filter((assigneeId) => memberIds.has(assigneeId));
 }
 
 async function uploadImage(dataUrl: string, path: string) {

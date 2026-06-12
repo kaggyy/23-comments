@@ -291,6 +291,7 @@ function Annotator({
 
     try {
       const annotatedScreenshotDataUrl = await renderAnnotatedImage();
+      const selectedAssignee = members.find((member) => member.id === selectedAssigneeId);
       const response = (await chrome.runtime.sendMessage({
         type: "SUBMIT_REPORT",
         payload: {
@@ -301,7 +302,7 @@ function Annotator({
           annotatedScreenshotDataUrl,
           annotations,
           attachmentDataUrls: attachments.map((a) => a.dataUrl),
-          assigneeIds: selectedAssigneeId ? [selectedAssigneeId] : [],
+          assigneeIds: selectedAssignee ? [selectedAssignee.id] : [],
           viewport: {
             width: window.innerWidth,
             height: window.innerHeight,
