@@ -8,7 +8,6 @@ import type {
 } from "react";
 import type { User } from "@supabase/supabase-js";
 import {
-  ArrowDownUp,
   Check,
   Copy,
   ListFilter,
@@ -71,6 +70,7 @@ type Report = {
   viewport_height: number;
   device_pixel_ratio: number;
   user_agent: string;
+  attachment_paths: string[];
   assignee_ids: string[];
   created_by: string | null;
   created_at: string;
@@ -87,18 +87,11 @@ type Comment = {
 };
 
 type LoadState = "loading" | "ready" | "error";
-type ReportSortKey = "status" | "updated_at";
-type SortDirection = "asc" | "desc";
-type ReportSortValue = `${ReportSortKey}:${SortDirection}`;
 type ToastTone = "default" | "error";
 type ToastState = {
   id: number;
   message: string;
   tone: ToastTone;
-};
-type ReportSort = {
-  key: ReportSortKey;
-  direction: SortDirection;
 };
 type SplitPaneStyle = CSSProperties & {
   "--split-left": string;
@@ -109,6 +102,7 @@ type ScreenshotFocusStyle = CSSProperties & {
 
 const SPLIT_MIN_PERCENT = 22;
 const SPLIT_MAX_PERCENT = 45;
+const DEFAULT_VISIBLE_STATUSES = statuses.filter((status) => status !== "archived");
 
 function displayProjectName(name: string | null | undefined) {
   return name === "Website feedback" ? "Webサイトフィードバック" : name;
@@ -280,7 +274,10 @@ export function Dashboard() {
   const [message, setMessage] = useState("");
   const [organization, setOrganization] = useState<Organization | null>(null);
   const [projects, setProjects] = useState<Project[]>([]);
-  const [selectedProjectId, setSelectedProjectId] = useState<string>("all");
+  const [selectedProjectId, setSelectedProjectId] = useState<string>(() => {
+    if (typeof window === "undefined") return "all";
+    return localStorage.getItem("selectedProjectId") ?? "all";
+  });
   const [reports, setReports] = useState<Report[]>([]);
   const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
   const [members, setMembers] = useState<Profile[]>([]);
@@ -293,22 +290,20 @@ export function Dashboard() {
   const [profilesById, setProfilesById] = useState<Record<string, Profile>>({});
   const [reportToDelete, setReportToDelete] = useState<Report | null>(null);
   const [openReportMenuId, setOpenReportMenuId] = useState<string | null>(null);
+  const [reportMenuPosition, setReportMenuPosition] = useState<{ top: number; right: number } | null>(null);
+  const reportMenuRef = useRef<HTMLDivElement | null>(null);
   const [isProjectSelectMenuOpen, setIsProjectSelectMenuOpen] = useState(false);
   const [isProjectMenuOpen, setIsProjectMenuOpen] = useState(false);
-  const [isReportSortMenuOpen, setIsReportSortMenuOpen] = useState(false);
   const [isStatusFilterMenuOpen, setIsStatusFilterMenuOpen] = useState(false);
-  const [visibleStatuses, setVisibleStatuses] = useState<ReportStatus[]>([...statuses]);
+  const [visibleStatuses, setVisibleStatuses] = useState<ReportStatus[]>([
+    ...DEFAULT_VISIBLE_STATUSES
+  ]);
   const [isAccountMenuOpen, setIsAccountMenuOpen] = useState(false);
   const [reportSearchQuery, setReportSearchQuery] = useState("");
   const [toast, setToast] = useState<ToastState | null>(null);
-  const [reportSort, setReportSort] = useState<ReportSort>({
-    key: "updated_at",
-    direction: "desc"
-  });
   const [splitLeftPercent, setSplitLeftPercent] = useState(25);
   const projectSelectMenuRef = useRef<HTMLDivElement | null>(null);
   const projectMenuRef = useRef<HTMLDivElement | null>(null);
-  const reportSortMenuRef = useRef<HTMLDivElement | null>(null);
   const statusFilterMenuRef = useRef<HTMLDivElement | null>(null);
   const accountMenuRef = useRef<HTMLDivElement | null>(null);
 
@@ -328,28 +323,17 @@ export function Dashboard() {
       return matchesProject && matchesSearch && matchesStatus;
     });
 
-    const direction = reportSort.direction === "asc" ? 1 : -1;
-
     return [...filteredReports].sort((firstReport, secondReport) => {
-      const primaryComparison =
-        reportSort.key === "status"
-          ? statuses.indexOf(firstReport.status) - statuses.indexOf(secondReport.status)
-          : Date.parse(firstReport.updated_at) - Date.parse(secondReport.updated_at);
+      const createdAtComparison =
+        Date.parse(secondReport.created_at) - Date.parse(firstReport.created_at);
 
-      if (primaryComparison !== 0) {
-        return primaryComparison * direction;
-      }
-
-      const updatedAtFallback =
-        Date.parse(secondReport.updated_at) - Date.parse(firstReport.updated_at);
-
-      if (updatedAtFallback !== 0) {
-        return updatedAtFallback;
+      if (createdAtComparison !== 0) {
+        return createdAtComparison;
       }
 
       return firstReport.id.localeCompare(secondReport.id);
     });
-  }, [reportSearchQuery, reportSort.direction, reportSort.key, reports, selectedProjectId, visibleStatuses]);
+  }, [reportSearchQuery, reports, selectedProjectId, visibleStatuses]);
 
   const reportGroups = useMemo(() => {
     const groups: Array<{ url: string; reports: Report[] }> = [];
@@ -390,6 +374,10 @@ export function Dashboard() {
   }
 
   useEffect(() => {
+    localStorage.setItem("selectedProjectId", selectedProjectId);
+  }, [selectedProjectId]);
+
+  useEffect(() => {
     if (
       selectedReportId &&
       !visibleReports.some((report) => report.id === selectedReportId)
@@ -415,7 +403,6 @@ export function Dashboard() {
     if (
       !isProjectSelectMenuOpen &&
       !isProjectMenuOpen &&
-      !isReportSortMenuOpen &&
       !isStatusFilterMenuOpen &&
       !isAccountMenuOpen
     ) {
@@ -442,14 +429,6 @@ export function Dashboard() {
       }
 
       if (
-        isReportSortMenuOpen &&
-        reportSortMenuRef.current &&
-        !reportSortMenuRef.current.contains(target)
-      ) {
-        setIsReportSortMenuOpen(false);
-      }
-
-      if (
         isStatusFilterMenuOpen &&
         statusFilterMenuRef.current &&
         !statusFilterMenuRef.current.contains(target)
@@ -470,7 +449,6 @@ export function Dashboard() {
       if (event.key === "Escape") {
         setIsProjectSelectMenuOpen(false);
         setIsProjectMenuOpen(false);
-        setIsReportSortMenuOpen(false);
         setIsStatusFilterMenuOpen(false);
         setIsAccountMenuOpen(false);
       }
@@ -482,21 +460,26 @@ export function Dashboard() {
       document.removeEventListener("pointerdown", handlePointerDown);
       window.removeEventListener("keydown", handleKeyDown);
     };
-  }, [isAccountMenuOpen, isProjectMenuOpen, isProjectSelectMenuOpen, isReportSortMenuOpen, isStatusFilterMenuOpen]);
+  }, [isAccountMenuOpen, isProjectMenuOpen, isProjectSelectMenuOpen, isStatusFilterMenuOpen]);
 
   useEffect(() => {
     if (!openReportMenuId) return;
 
     function handlePointerDown(event: PointerEvent) {
       const target = event.target as Element;
-      if (!target?.closest(".report-list-menu-wrap")) {
+      if (
+        !target?.closest(".report-list-menu-wrap") &&
+        !reportMenuRef.current?.contains(target)
+      ) {
         setOpenReportMenuId(null);
+        setReportMenuPosition(null);
       }
     }
 
     function handleKeyDown(event: KeyboardEvent) {
       if (event.key === "Escape") {
         setOpenReportMenuId(null);
+        setReportMenuPosition(null);
       }
     }
 
@@ -507,11 +490,6 @@ export function Dashboard() {
       window.removeEventListener("keydown", handleKeyDown);
     };
   }, [openReportMenuId]);
-
-  function handleSortSelectChange(value: ReportSortValue) {
-    const [key, direction] = value.split(":") as [ReportSortKey, SortDirection];
-    setReportSort({ key, direction });
-  }
 
   function updateSplitFromPointer(event: ReactPointerEvent<HTMLDivElement>) {
     const container = event.currentTarget.parentElement;
@@ -792,7 +770,11 @@ export function Dashboard() {
     }
 
     setOrganization(organizationData as Organization);
-    setProjects((projectsResult.data ?? []) as Project[]);
+    const nextProjects = (projectsResult.data ?? []) as Project[];
+    setProjects(nextProjects);
+    setSelectedProjectId((current) =>
+      current === "all" || nextProjects.some((p) => p.id === current) ? current : "all"
+    );
     await loadMembers(organizationId);
     await loadReports(organizationId);
     setState("ready");
@@ -808,7 +790,7 @@ export function Dashboard() {
       .from("reports")
       .select("*, projects(name)")
       .eq("organization_id", organizationId)
-      .order("updated_at", { ascending: false });
+      .order("created_at", { ascending: false });
 
     if (error) {
       showToast(error.message, "error");
@@ -824,9 +806,13 @@ export function Dashboard() {
       ])
     );
     const currentId = searchParams.get("reportId");
-    const nextId = (currentId && nextReports.some((r) => r.id === currentId))
-      ? currentId
-      : (nextReports[0]?.id ?? null);
+    const currentReport = currentId
+      ? nextReports.find((report) => report.id === currentId)
+      : null;
+    const nextId =
+      currentReport && visibleStatuses.includes(currentReport.status)
+        ? currentId
+        : (nextReports.find((report) => visibleStatuses.includes(report.status))?.id ?? null);
     if (nextId !== currentId) {
       selectReport(nextId, true);
     }
@@ -1229,45 +1215,6 @@ export function Dashboard() {
                       </div>
                     ) : null}
                   </div>
-                  <div className="report-sort-menu-wrap" ref={reportSortMenuRef}>
-                    <button
-                      aria-expanded={isReportSortMenuOpen}
-                      aria-haspopup="menu"
-                      aria-label="並び替え"
-                      className="report-sort-button"
-                      type="button"
-                      onClick={() => setIsReportSortMenuOpen((isOpen) => !isOpen)}
-                    >
-                      <ArrowDownUp size={16} />
-                    </button>
-                    {isReportSortMenuOpen ? (
-                      <div className="report-sort-menu" role="menu">
-                        {[
-                          ["updated_at:desc", "更新日時 新しい順"],
-                          ["updated_at:asc", "更新日時 古い順"],
-                          ["status:asc", "ステータス 昇順"],
-                          ["status:desc", "ステータス 降順"]
-                        ].map(([value, label]) => (
-                          <button
-                            className={
-                              `${reportSort.key}:${reportSort.direction}` === value
-                                ? "report-sort-menu-item report-sort-menu-item-active"
-                                : "report-sort-menu-item"
-                            }
-                            key={value}
-                            role="menuitem"
-                            type="button"
-                            onClick={() => {
-                              handleSortSelectChange(value as ReportSortValue);
-                              setIsReportSortMenuOpen(false);
-                            }}
-                          >
-                            {label}
-                          </button>
-                        ))}
-                      </div>
-                    ) : null}
-                  </div>
                 </div>
               </div>
               <div className="report-list">
@@ -1312,27 +1259,46 @@ export function Dashboard() {
                               type="button"
                               onClick={(e) => {
                                 e.stopPropagation();
-                                setOpenReportMenuId((id) => id === report.id ? null : report.id);
+                                if (openReportMenuId === report.id) {
+                                  setOpenReportMenuId(null);
+                                  setReportMenuPosition(null);
+                                } else {
+                                  const rect = e.currentTarget.getBoundingClientRect();
+                                  setReportMenuPosition({
+                                    top: rect.bottom + 4,
+                                    right: window.innerWidth - rect.right
+                                  });
+                                  setOpenReportMenuId(report.id);
+                                }
                               }}
                             >
                               <MoreHorizontal size={14} />
                             </button>
-                            {openReportMenuId === report.id ? (
-                              <div className="report-list-menu" role="menu">
-                                <button
-                                  className="report-list-menu-item report-list-menu-item-danger"
-                                  role="menuitem"
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setOpenReportMenuId(null);
-                                    setReportToDelete(report);
-                                  }}
-                                >
-                                  削除
-                                </button>
-                              </div>
-                            ) : null}
+                            {openReportMenuId === report.id && reportMenuPosition
+                              ? createPortal(
+                                  <div
+                                    ref={reportMenuRef}
+                                    className="report-list-menu"
+                                    role="menu"
+                                    style={{ position: "fixed", top: reportMenuPosition.top, right: reportMenuPosition.right }}
+                                  >
+                                    <button
+                                      className="report-list-menu-item report-list-menu-item-danger"
+                                      role="menuitem"
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setOpenReportMenuId(null);
+                                        setReportMenuPosition(null);
+                                        setReportToDelete(report);
+                                      }}
+                                    >
+                                      削除
+                                    </button>
+                                  </div>,
+                                  document.body
+                                )
+                              : null}
                           </div>
                         </div>
                       ))}
@@ -1705,6 +1671,7 @@ function ReportDetail({
   const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
   const [editingCommentBody, setEditingCommentBody] = useState("");
   const [isScreenshotModalOpen, setIsScreenshotModalOpen] = useState(false);
+  const [attachmentModalUrl, setAttachmentModalUrl] = useState<string | null>(null);
   const statusMenuRef = useRef<HTMLDivElement | null>(null);
   const assigneeMenuRef = useRef<HTMLDivElement | null>(null);
 
@@ -2083,23 +2050,43 @@ function ReportDetail({
 
           <div className="detail-row detail-row-top">
             <span className="detail-label">内容</span>
-            <div className="detail-value">
-              {editingField === "description" ? (
-                <textarea
-                  autoFocus
-                  className="detail-textarea"
-                  value={description}
-                  onBlur={handleDescriptionBlur}
-                  onChange={(event) => setDescription(event.target.value)}
-                />
-              ) : (
-                <button
-                  className="detail-editable detail-editable-text"
-                  type="button"
-                  onClick={() => setEditingField("description")}
-                >
-                  {description || "コメントなし"}
-                </button>
+            <div className="detail-value detail-value-body">
+              <div className="detail-body-content">
+                {editingField === "description" ? (
+                  <textarea
+                    autoFocus
+                    className="detail-textarea"
+                    value={description}
+                    onBlur={handleDescriptionBlur}
+                    onChange={(event) => setDescription(event.target.value)}
+                  />
+                ) : (
+                  <button
+                    className="detail-editable detail-editable-text"
+                    type="button"
+                    onClick={() => setEditingField("description")}
+                  >
+                    {description || "コメントなし"}
+                  </button>
+                )}
+              </div>
+              {report.attachment_paths?.length > 0 && (
+                <div className="report-attachments">
+                  {report.attachment_paths.map((path, i) => (
+                    <button
+                      className="report-attachment-btn"
+                      key={i}
+                      type="button"
+                      onClick={() => setAttachmentModalUrl(getAssetUrl(path))}
+                    >
+                      <img
+                        alt={`添付画像 ${i + 1}`}
+                        className="report-attachment-thumb"
+                        src={getAssetUrl(path)}
+                      />
+                    </button>
+                  ))}
+                </div>
               )}
             </div>
           </div>
@@ -2301,6 +2288,38 @@ function ReportDetail({
               alt={screenshotAlt}
               className="image-modal-image"
               src={screenshotUrl}
+            />
+          </section>
+        </div>,
+            document.body
+          )
+        : null}
+      {attachmentModalUrl
+        ? createPortal(
+        <div
+          className="image-modal-backdrop"
+          role="presentation"
+          onClick={() => setAttachmentModalUrl(null)}
+        >
+          <section
+            aria-label="添付画像"
+            aria-modal="true"
+            className="image-modal"
+            role="dialog"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <button
+              aria-label="閉じる"
+              className="modal-close image-modal-close"
+              type="button"
+              onClick={() => setAttachmentModalUrl(null)}
+            >
+              <X size={16} />
+            </button>
+            <img
+              alt="添付画像"
+              className="image-modal-image"
+              src={attachmentModalUrl}
             />
           </section>
         </div>,

@@ -31,6 +31,7 @@ type SubmitPayload = {
   screenshotDataUrl: string;
   annotatedScreenshotDataUrl: string;
   annotations: unknown[];
+  attachmentDataUrls?: string[];
   viewport: {
     width: number;
     height: number;
@@ -314,6 +315,16 @@ async function submitReport(payload: SubmitPayload) {
     await uploadImage(parsed.screenshotDataUrl, screenshotPath);
     await uploadImage(parsed.annotatedScreenshotDataUrl, annotatedPath);
 
+    const attachmentPaths: string[] = [];
+    for (let i = 0; i < (parsed.attachmentDataUrls ?? []).length; i++) {
+      const dataUrl = parsed.attachmentDataUrls![i];
+      const mimeType = dataUrl.split(";")[0].split(":")[1];
+      const ext = mimeType.split("/")[1] ?? "png";
+      const attachPath = `${basePath}-attachment-${i}.${ext}`;
+      await uploadFile(dataUrl, attachPath, mimeType);
+      attachmentPaths.push(attachPath);
+    }
+
     const { data, error } = await supabase
       .from("reports")
       .insert({
@@ -326,6 +337,7 @@ async function submitReport(payload: SubmitPayload) {
         screenshot_path: screenshotPath,
         annotated_screenshot_path: annotatedPath,
         annotations: parsed.annotations,
+        attachment_paths: attachmentPaths,
         viewport_width: parsed.viewport.width,
         viewport_height: parsed.viewport.height,
         device_pixel_ratio: parsed.viewport.devicePixelRatio,
@@ -352,13 +364,17 @@ async function submitReport(payload: SubmitPayload) {
 }
 
 async function uploadImage(dataUrl: string, path: string) {
+  return uploadFile(dataUrl, path, "image/png");
+}
+
+async function uploadFile(dataUrl: string, path: string, contentType: string) {
   const settings = await getSettings();
   const supabase = await createAuthenticatedSupabase(settings);
   const blob = await dataUrlToBlob(dataUrl);
   const { error } = await supabase.storage
     .from("report-assets")
     .upload(path, blob, {
-      contentType: "image/png",
+      contentType,
       upsert: false
     });
 

@@ -1,6 +1,6 @@
 import type { RectAnnotation } from "@comment-tool/shared";
-import { LogOut, Send, Trash2, Undo2, X } from "lucide-react";
-import { PointerEvent, useEffect, useRef, useState } from "react";
+import { Image as ImageIcon, LogOut, Send, Trash2, Undo2, X } from "lucide-react";
+import { PointerEvent, useEffect, useRef, useState, useCallback, ClipboardEvent } from "react";
 import { createRoot, type Root } from "react-dom/client";
 
 type StoredProject = {
@@ -91,6 +91,8 @@ function Annotator({
   const imageRef = useRef<HTMLImageElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [description, setDescription] = useState("");
+  const [attachments, setAttachments] = useState<{ name: string; dataUrl: string }[]>([]);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [annotations, setAnnotations] = useState<RectAnnotation[]>([]);
   const [draft, setDraft] = useState<RectAnnotation | null>(null);
   const [startPoint, setStartPoint] = useState<{ x: number; y: number } | null>(
@@ -234,6 +236,42 @@ function Annotator({
     setStartPoint(null);
   }
 
+  const addFilesAsAttachments = useCallback(async (files: FileList | File[]) => {
+    const list = Array.from(files).filter((f) => f.type.startsWith("image/"));
+    const remaining = 5 - attachments.length;
+    const toAdd = list.slice(0, remaining);
+
+    const results = await Promise.all(
+      toAdd.map(
+        (file) =>
+          new Promise<{ name: string; dataUrl: string }>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve({ name: file.name, dataUrl: reader.result as string });
+            reader.onerror = () => reject(new Error("画像を読み込めませんでした。"));
+            reader.readAsDataURL(file);
+          })
+      )
+    );
+
+    setAttachments((current) => [...current, ...results]);
+  }, [attachments.length]);
+
+  function handlePaste(event: ClipboardEvent<HTMLTextAreaElement>) {
+    const items = event.clipboardData?.items;
+    if (!items) return;
+    const imageFiles: File[] = [];
+    for (const item of items) {
+      if (item.kind === "file" && item.type.startsWith("image/")) {
+        const file = item.getAsFile();
+        if (file) imageFiles.push(file);
+      }
+    }
+    if (imageFiles.length > 0) {
+      event.preventDefault();
+      addFilesAsAttachments(imageFiles);
+    }
+  }
+
   async function handleSubmit() {
     setBusy(true);
     setMessage("");
@@ -249,6 +287,7 @@ function Annotator({
           screenshotDataUrl: payload.screenshotDataUrl,
           annotatedScreenshotDataUrl,
           annotations,
+          attachmentDataUrls: attachments.map((a) => a.dataUrl),
           viewport: {
             width: window.innerWidth,
             height: window.innerHeight,
@@ -401,13 +440,55 @@ function Annotator({
 
         <label>
           内容
-          <textarea
-            className="textarea"
-            value={description}
-            onChange={(event) => setDescription(event.target.value)}
-            placeholder="具体的なフィードバックを入力"
-          />
+          <div className="textarea-wrap">
+            <textarea
+              className="textarea"
+              value={description}
+              onChange={(event) => setDescription(event.target.value)}
+              onPaste={handlePaste}
+              placeholder="具体的なフィードバックを入力"
+            />
+            <button
+              className="attach-image-button"
+              title="画像を添付"
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+            >
+              <ImageIcon size={15} />
+            </button>
+            <input
+              ref={fileInputRef}
+              accept="image/*"
+              multiple
+              style={{ display: "none" }}
+              type="file"
+              onChange={(event) => {
+                if (event.target.files) {
+                  addFilesAsAttachments(event.target.files);
+                  event.target.value = "";
+                }
+              }}
+            />
+          </div>
         </label>
+
+        {attachments.length > 0 && (
+          <div className="attachment-list">
+            {attachments.map((attachment, index) => (
+              <div className="attachment-item" key={index}>
+                <img alt={attachment.name} className="attachment-thumb" src={attachment.dataUrl} />
+                <button
+                  aria-label="削除"
+                  className="attachment-remove"
+                  type="button"
+                  onClick={() => setAttachments((current) => current.filter((_, i) => i !== index))}
+                >
+                  <X size={10} />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
 
         {message ? <div className="notice">{message}</div> : null}
 
@@ -572,6 +653,80 @@ const overlayStyles = `
   .textarea {
     min-height: 120px;
     resize: vertical;
+  }
+
+  .textarea-wrap {
+    position: relative;
+  }
+
+  .textarea-wrap .textarea {
+    width: 100%;
+    padding-bottom: 32px;
+  }
+
+  .attach-image-button {
+    position: absolute;
+    right: 8px;
+    bottom: 8px;
+    display: inline-grid;
+    width: 26px;
+    height: 26px;
+    place-items: center;
+    color: #787671;
+    background: transparent;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    padding: 0;
+  }
+
+  .attach-image-button:hover {
+    color: #37352f;
+    background: #f0eeec;
+  }
+
+  .attachment-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: -4px;
+  }
+
+  .attachment-item {
+    position: relative;
+    width: 60px;
+    height: 60px;
+    border-radius: 6px;
+    overflow: hidden;
+    border: 1px solid #e5e3df;
+    flex-shrink: 0;
+  }
+
+  .attachment-thumb {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+
+  .attachment-remove {
+    position: absolute;
+    top: 2px;
+    right: 2px;
+    display: inline-grid;
+    width: 16px;
+    height: 16px;
+    place-items: center;
+    color: #ffffff;
+    background: rgba(0, 0, 0, 0.55);
+    border: none;
+    border-radius: 50%;
+    cursor: pointer;
+    padding: 0;
+  }
+
+  .attachment-remove:hover {
+    background: rgba(0, 0, 0, 0.75);
   }
 
   .input:focus,
