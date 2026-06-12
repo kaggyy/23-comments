@@ -1,10 +1,16 @@
 import { createClient } from "@supabase/supabase-js";
 import { NextResponse } from "next/server";
+import webpush, { type PushSubscription } from "web-push";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
-const resendApiKey = process.env.RESEND_API_KEY ?? "";
-const notificationFrom = process.env.NOTIFICATION_FROM ?? "";
+const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
+const publicVapidKey = process.env.NEXT_PUBLIC_WEB_PUSH_PUBLIC_KEY ?? "";
+const privateVapidKey = process.env.WEB_PUSH_PRIVATE_KEY ?? "";
+const vapidSubject =
+  process.env.WEB_PUSH_SUBJECT ?? process.env.NEXT_PUBLIC_APP_URL ?? supabaseUrl;
+
+export const runtime = "nodejs";
 
 type NotificationRequest = {
   reportId?: unknown;
@@ -14,13 +20,12 @@ type NotificationRequest = {
 type ReportRow = {
   id: string;
   description: string;
-  page_url: string;
   assignee_ids: string[] | null;
 };
 
-type ProfileRow = {
-  id: string;
-  email: string | null;
+type PushSubscriptionRow = {
+  endpoint: string;
+  subscription: PushSubscription;
 };
 
 const uuidPattern =
@@ -28,6 +33,12 @@ const uuidPattern =
 
 function isUuid(value: unknown): value is string {
   return typeof value === "string" && uuidPattern.test(value);
+}
+
+function getWebPushStatusCode(reason: unknown) {
+  return typeof reason === "object" && reason !== null && "statusCode" in reason
+    ? (reason as { statusCode?: number }).statusCode
+    : undefined;
 }
 
 export async function POST(request: Request) {
@@ -38,9 +49,9 @@ export async function POST(request: Request) {
     );
   }
 
-  if (!resendApiKey || !notificationFrom) {
+  if (!supabaseServiceRoleKey || !publicVapidKey || !privateVapidKey || !vapidSubject) {
     return NextResponse.json(
-      { error: "メール通知設定が見つかりません。" },
+      { error: "プッシュ通知設定が見つかりません。" },
       { status: 503 }
     );
   }
@@ -81,7 +92,7 @@ export async function POST(request: Request) {
 
   const { data: reportData, error: reportError } = await supabase
     .from("reports")
-    .select("id, description, page_url, assignee_ids")
+    .select("id, description, assignee_ids")
     .eq("id", reportId)
     .single();
 
@@ -99,48 +110,70 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: true, skipped: true });
   }
 
-  const { data: profilesData, error: profilesError } = await supabase
-    .from("profiles")
-    .select("id, email")
-    .in("id", targetAssigneeIds);
+  const adminSupabase = createClient(supabaseUrl, supabaseServiceRoleKey, {
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false
+    }
+  });
 
-  if (profilesError) {
-    return NextResponse.json({ error: profilesError.message }, { status: 500 });
+  const { data: subscriptionsData, error: subscriptionsError } = await adminSupabase
+    .from("web_push_subscriptions")
+    .select("endpoint, subscription")
+    .in("user_id", targetAssigneeIds);
+
+  if (subscriptionsError) {
+    return NextResponse.json({ error: subscriptionsError.message }, { status: 500 });
   }
 
-  const recipientEmails = ((profilesData ?? []) as ProfileRow[])
-    .map((profile) => profile.email)
-    .filter((email): email is string => Boolean(email));
+  const subscriptions = (subscriptionsData ?? []) as PushSubscriptionRow[];
 
-  if (!recipientEmails.length) {
+  if (!subscriptions.length) {
     return NextResponse.json({ ok: true, skipped: true });
   }
 
   const reportText = report.description || "コメントなし";
-  const text = [
-    "担当者に設定されました。",
-    "",
-    reportText,
-    report.page_url
-  ].join("\n");
-
-  const resendResponse = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${resendApiKey}`,
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      from: notificationFrom,
-      to: recipientEmails,
-      subject: "担当者に設定されました",
-      text
-    })
+  const appUrl = (process.env.NEXT_PUBLIC_APP_URL ?? "").replace(/\/$/, "");
+  const pushPayload = JSON.stringify({
+    title: "担当者に設定されました",
+    body: reportText,
+    url: appUrl ? `${appUrl}/?reportId=${report.id}` : `/?reportId=${report.id}`
   });
 
-  if (!resendResponse.ok) {
+  webpush.setVapidDetails(vapidSubject, publicVapidKey, privateVapidKey);
+
+  const results = await Promise.allSettled(
+    subscriptions.map((subscription) =>
+      webpush.sendNotification(subscription.subscription, pushPayload)
+    )
+  );
+
+  const expiredEndpoints = subscriptions
+    .filter((subscription, index) => {
+      const result = results[index];
+      return (
+        result?.status === "rejected" &&
+        [404, 410].includes(getWebPushStatusCode(result.reason) ?? 0)
+      );
+    })
+    .map((subscription) => subscription.endpoint);
+
+  if (expiredEndpoints.length) {
+    await adminSupabase
+      .from("web_push_subscriptions")
+      .delete()
+      .in("endpoint", expiredEndpoints);
+  }
+
+  const hasFailure = results.some(
+    (result) =>
+      result.status === "rejected" &&
+      ![404, 410].includes(getWebPushStatusCode(result.reason) ?? 0)
+  );
+
+  if (hasFailure) {
     return NextResponse.json(
-      { error: "メール通知を送信できませんでした。" },
+      { error: "プッシュ通知を送信できませんでした。" },
       { status: 502 }
     );
   }

@@ -9,6 +9,7 @@ export default function InvitePage() {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [displayName, setDisplayName] = useState("");
+  const [loginId, setLoginId] = useState("");
   const [password, setPassword] = useState("");
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(true);
@@ -61,6 +62,9 @@ export default function InvitePage() {
         return;
       }
 
+      const invitation = Array.isArray(data) ? data[0] : data;
+      setEmail(invitation.email ?? "");
+      setDisplayName(invitation.display_name ?? "");
       setLoading(false);
     }
 
@@ -74,33 +78,32 @@ export default function InvitePage() {
 
     try {
       const supabase = getSupabaseClient();
-      const result = await supabase.auth.signUp({
-        email,
-        password,
-        options: {
-          data: {
-            display_name: displayName.trim()
-          },
-          emailRedirectTo: window.location.href
-        }
-      });
-
-      if (result.error) {
-        setMessage(result.error.message);
+      if (loginId.trim() !== displayName) {
+        setMessage("IDまたはパスワードが正しくありません。");
         return;
       }
 
-      if (!result.data.session) {
-        setMessage("登録が完了しました。メールを確認してください。");
+      const result = await supabase.auth.signInWithPassword({
+        email,
+        password
+      });
+
+      if (result.error) {
+        setMessage("IDまたはパスワードが正しくありません。");
         return;
       }
 
       const session = result.data.session;
+      if (!session) {
+        setMessage("IDまたはパスワードが正しくありません。");
+        return;
+      }
+
       const { error: profileError } = await supabase.from("profiles").upsert(
         {
           id: session.user.id,
-          display_name: displayName.trim(),
-          email: session.user.email ?? email
+          display_name: displayName,
+          email
         },
         { onConflict: "id" }
       );
@@ -121,7 +124,7 @@ export default function InvitePage() {
 
       router.replace("/");
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "登録に失敗しました。");
+      setMessage(error instanceof Error ? error.message : "ログインに失敗しました。");
     } finally {
       setBusy(false);
     }
@@ -143,13 +146,12 @@ export default function InvitePage() {
         {isInviteAvailable ? (
           <form className="panel-body" onSubmit={handleSubmit}>
             <div className="form-row">
-              <label htmlFor="email">メールアドレス</label>
+              <label htmlFor="login-id">ID</label>
               <input
                 className="input"
-                id="email"
-                type="email"
-                value={email}
-                onChange={(event) => setEmail(event.target.value)}
+                id="login-id"
+                value={loginId}
+                onChange={(event) => setLoginId(event.target.value)}
                 required
               />
             </div>
@@ -165,19 +167,9 @@ export default function InvitePage() {
                 required
               />
             </div>
-            <div className="form-row">
-              <label htmlFor="display-name">あなたの名前</label>
-              <input
-                className="input"
-                id="display-name"
-                value={displayName}
-                onChange={(event) => setDisplayName(event.target.value)}
-                required
-              />
-            </div>
             {message ? <div className="notice">{message}</div> : null}
             <button className="button button-primary" disabled={busy} type="submit">
-              {busy ? "処理中..." : "上記の内容で登録"}
+              {busy ? "処理中..." : "ログイン"}
             </button>
           </form>
         ) : (

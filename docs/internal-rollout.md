@@ -25,6 +25,8 @@
    - `supabase/migrations/20260604000000_init.sql`
    - `supabase/migrations/20260604010000_profiles.sql`
    - `supabase/migrations/20260604020000_storage_delete.sql`
+   - `supabase/migrations/20260612000000_roles_and_personal_invites.sql`
+   - `supabase/migrations/20260612010000_web_push_subscriptions.sql`
 3. Storage bucket `report-assets` が作成されていることを確認します。
 4. RLS policyが有効で、ログイン済みメンバーだけがデータを扱えることを確認します。
 5. Supabaseの以下を控えます。
@@ -39,7 +41,11 @@
 4. Environment variablesに以下を設定します。
    - `NEXT_PUBLIC_SUPABASE_URL`
    - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+   - `SUPABASE_SERVICE_ROLE_KEY`
    - `NEXT_PUBLIC_APP_URL`（Vercelの正式URL）
+   - `NEXT_PUBLIC_WEB_PUSH_PUBLIC_KEY`
+   - `WEB_PUSH_PRIVATE_KEY`
+   - `WEB_PUSH_SUBJECT`
 5. デプロイ後、本番URLで以下を確認します。
    - ログインできる
    - プロジェクトを作成できる
@@ -86,7 +92,7 @@ npm run build --workspace @comment-tool/extension
   - `解決済み`: 修正完了
   - `アーカイブ`: 完了後に一覧から整理したいもの
 - プロジェクト削除はコメントも一括削除されるため、検証中は管理者相当の人だけが実行します。
-- MVPでは全ユーザーをowner扱いにします。権限分離は本格導入後に検討します。
+- 権限は管理者とメンバーの2種類で運用します。
 - 画像やコメントに社外秘情報が含まれる可能性があるため、利用対象案件と共有範囲を事前に決めます。
 
 ## 検証チェックリスト
@@ -106,7 +112,7 @@ npm run build --workspace @comment-tool/extension
 本格導入前に、以下を改善候補として確認します。
 
 - 権限ロールの分離
-- メール通知
+- Webプッシュ通知
 - プロジェクト別メンバー管理
 - 本番用エラーログ
 - Storage容量と削除ポリシー

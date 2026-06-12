@@ -10,9 +10,8 @@ import type {
 import type { User } from "@supabase/supabase-js";
 import {
   Check,
-  Copy,
+  ChevronDown,
   ListFilter,
-  LogOut,
   MoreHorizontal,
   Pencil,
   Plus,
@@ -35,11 +34,11 @@ import {
   getSupabaseClient,
   isSupabaseConfigured
 } from "@/lib/supabase";
+import { syncWebPushSubscription } from "@/lib/webPush";
 
 type Organization = {
   id: string;
   name: string;
-  invite_token: string;
 };
 
 type Project = {
@@ -53,6 +52,12 @@ type Profile = {
   id: string;
   display_name: string;
   email: string | null;
+};
+
+type MemberRole = "owner" | "member";
+
+type Member = Profile & {
+  role: MemberRole;
 };
 
 type Report = {
@@ -114,6 +119,10 @@ const DEFAULT_VISIBLE_STATUSES = statuses.filter((status) => status !== "archive
 const RECENT_ASSIGNEE_STORAGE_KEY = "recentAssigneeIds";
 const COMMENT_LINK_PATTERN = /(https?:\/\/[^\s<>()]+|www\.[^\s<>()]+)/gi;
 const COMMENT_LINK_TRAILING_PUNCTUATION = /[.,!?;:。！？、)）]+$/;
+const roleLabels: Record<MemberRole, string> = {
+  owner: "管理者",
+  member: "メンバー"
+};
 
 function clampMenuPosition(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), Math.max(min, max));
@@ -412,6 +421,7 @@ export function Dashboard() {
   const [state, setState] = useState<LoadState>("loading");
   const [message, setMessage] = useState("");
   const [organization, setOrganization] = useState<Organization | null>(null);
+  const [ownRole, setOwnRole] = useState<MemberRole>("member");
   const [projects, setProjects] = useState<Project[]>([]);
   const [selectedProjectId, setSelectedProjectId] = useState<string>(() => {
     if (typeof window === "undefined") return "all";
@@ -419,7 +429,14 @@ export function Dashboard() {
   });
   const [reports, setReports] = useState<Report[]>([]);
   const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
-  const [members, setMembers] = useState<Profile[]>([]);
+  const [isInviteFormModalOpen, setIsInviteFormModalOpen] = useState(false);
+  const [members, setMembers] = useState<Member[]>([]);
+  const [openMemberMenuId, setOpenMemberMenuId] = useState<string | null>(null);
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteDisplayName, setInviteDisplayName] = useState("");
+  const [invitePassword, setInvitePassword] = useState("");
+  const [inviteRole, setInviteRole] = useState<MemberRole>("member");
+  const [isInviteRoleMenuOpen, setIsInviteRoleMenuOpen] = useState(false);
   const [newProjectName, setNewProjectName] = useState("");
   const [isProjectModalOpen, setIsProjectModalOpen] = useState(false);
   const [projectToDelete, setProjectToDelete] = useState<Project | null>(null);
@@ -451,6 +468,8 @@ export function Dashboard() {
   const projectMenuRef = useRef<HTMLDivElement | null>(null);
   const statusFilterMenuRef = useRef<HTMLDivElement | null>(null);
   const accountMenuRef = useRef<HTMLDivElement | null>(null);
+  const memberMenuRef = useRef<HTMLDivElement | null>(null);
+  const inviteRoleMenuRef = useRef<HTMLDivElement | null>(null);
 
   const selectedProject = useMemo(
     () => projects.find((project) => project.id === selectedProjectId) ?? null,
@@ -526,6 +545,7 @@ export function Dashboard() {
     [selectedReportId, visibleReports]
   );
   const accountLabel = displayName.trim() || accountEmail || user?.email || (user ? shortId(user.id) : "");
+  const isOwner = ownRole === "owner";
 
   function showToast(messageText: string, tone: ToastTone = "default") {
     setToast({
@@ -672,6 +692,60 @@ export function Dashboard() {
     };
   }, [openReportMenuId, openReportStatusMenuId]);
 
+  useEffect(() => {
+    if (!openMemberMenuId) {
+      return;
+    }
+
+    function handlePointerDown(event: PointerEvent) {
+      const target = event.target as Element;
+
+      if (!memberMenuRef.current?.contains(target)) {
+        setOpenMemberMenuId(null);
+      }
+    }
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setOpenMemberMenuId(null);
+      }
+    }
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [openMemberMenuId]);
+
+  useEffect(() => {
+    if (!isInviteRoleMenuOpen) {
+      return;
+    }
+
+    function handlePointerDown(event: PointerEvent) {
+      const target = event.target as Element;
+
+      if (!inviteRoleMenuRef.current?.contains(target)) {
+        setIsInviteRoleMenuOpen(false);
+      }
+    }
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setIsInviteRoleMenuOpen(false);
+      }
+    }
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isInviteRoleMenuOpen]);
+
   function updateSplitFromPointer(event: ReactPointerEvent<HTMLDivElement>) {
     const container = event.currentTarget.parentElement;
 
@@ -770,7 +844,7 @@ export function Dashboard() {
     const supabase = getSupabaseClient();
     const { data: membershipsData, error: membershipsError } = await supabase
       .from("memberships")
-      .select("user_id")
+      .select("user_id, role")
       .eq("organization_id", organizationId);
 
     if (membershipsError) {
@@ -802,12 +876,19 @@ export function Dashboard() {
     setMembers(
       memberIds.map((memberId) => {
         const profile = profiles.find((nextProfile) => nextProfile.id === memberId);
+        const membership = membershipsData?.find(
+          (nextMembership) => nextMembership.user_id === memberId
+        );
+        const role = membership?.role === "owner" ? "owner" : "member";
 
         return (
-          profile ?? {
-            id: memberId,
-            display_name: "",
-            email: null
+          {
+            ...(profile ?? {
+              id: memberId,
+              display_name: "",
+              email: null
+            }),
+            role
           }
         );
       })
@@ -882,11 +963,12 @@ export function Dashboard() {
 
     setUser(currentSession.user);
     setAccountEmail(currentSession.user.email ?? "");
+    void syncWebPushSubscription(currentSession.access_token).catch(() => undefined);
     await loadOwnProfile(currentSession.user);
 
     let { data: memberships, error: membershipsError } = await supabase
       .from("memberships")
-      .select("organization_id")
+      .select("organization_id, role")
       .limit(1);
 
     if (membershipsError) {
@@ -910,7 +992,7 @@ export function Dashboard() {
 
       const retry = await supabase
         .from("memberships")
-        .select("organization_id")
+        .select("organization_id, role")
         .limit(1);
       memberships = retry.data;
       membershipsError = retry.error;
@@ -923,6 +1005,7 @@ export function Dashboard() {
     }
 
     const organizationId = memberships?.[0]?.organization_id;
+    const membershipRole: MemberRole = memberships?.[0]?.role === "owner" ? "owner" : "member";
 
     if (!organizationId) {
       setState("error");
@@ -934,7 +1017,7 @@ export function Dashboard() {
       await Promise.all([
         supabase
           .from("organizations")
-          .select("id, name, invite_token")
+          .select("id, name")
           .eq("id", organizationId)
           .single(),
         supabase
@@ -951,6 +1034,7 @@ export function Dashboard() {
     }
 
     setOrganization(organizationData as Organization);
+    setOwnRole(membershipRole);
     const nextProjects = (projectsResult.data ?? []) as Project[];
     setProjects(nextProjects);
     setSelectedProjectId((current) =>
@@ -1011,22 +1095,85 @@ export function Dashboard() {
   async function handleCreateInvite(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
-    if (!organization) {
+    if (!organization || !isOwner) {
       return;
     }
 
-    const url = `${getPublicAppUrl().replace(/\/$/, "")}/invite/${organization.invite_token}`;
-    setIsInviteModalOpen(false);
+    const supabase = getSupabaseClient();
+    const {
+      data: { session }
+    } = await supabase.auth.getSession();
+
+    if (!session) {
+      showToast("認証が必要です。", "error");
+      return;
+    }
+
     try {
-      await navigator.clipboard?.writeText(url);
-      showToast("招待リンクをコピーしました。");
+      const response = await fetch("/api/invitations", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`
+        },
+        body: JSON.stringify({
+          organizationId: organization.id,
+          email: inviteEmail,
+          displayName: inviteDisplayName,
+          password: invitePassword,
+          role: inviteRole
+        })
+      });
+      const result = (await response.json().catch(() => null)) as { token?: string; error?: string } | null;
+
+      if (!response.ok || !result?.token) {
+        showToast(result?.error ?? "招待リンクを作成できませんでした。", "error");
+        return;
+      }
+
+      const url = `${getPublicAppUrl().replace(/\/$/, "")}/invite/${result.token}`;
+      await navigator.clipboard?.writeText(url).catch(() => undefined);
+      setInviteEmail("");
+      setInviteDisplayName("");
+      setInvitePassword("");
+      setInviteRole("member");
+      setIsInviteFormModalOpen(false);
+      showToast("招待リンクを発行しました。");
     } catch {
-      showToast("招待リンクをコピーできませんでした。", "error");
+      showToast("招待リンクを発行できませんでした。", "error");
     }
   }
 
+  async function handleChangeMemberRole(memberId: string, nextRole: MemberRole) {
+    if (!organization || !isOwner) {
+      return;
+    }
+
+    const supabase = getSupabaseClient();
+    const { error } = await supabase
+      .from("memberships")
+      .update({ role: nextRole })
+      .eq("organization_id", organization.id)
+      .eq("user_id", memberId);
+
+    if (error) {
+      showToast(error.message, "error");
+      return;
+    }
+
+    setMembers((currentMembers) =>
+      currentMembers.map((member) =>
+        member.id === memberId ? { ...member, role: nextRole } : member
+      )
+    );
+    if (memberId === user?.id) {
+      setOwnRole(nextRole);
+    }
+    showToast("権限を変更しました。");
+  }
+
   async function handleDeleteMember(memberId: string) {
-    if (!organization) {
+    if (!organization || !isOwner) {
       return;
     }
 
@@ -1092,7 +1239,7 @@ export function Dashboard() {
   async function handleCreateProject(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
-    if (!organization || !user || !newProjectName.trim()) {
+    if (!organization || !user || !isOwner || !newProjectName.trim()) {
       return;
     }
 
@@ -1170,7 +1317,7 @@ export function Dashboard() {
   }
 
   async function handleDeleteReport() {
-    if (!reportToDelete) {
+    if (!reportToDelete || !isOwner) {
       return;
     }
 
@@ -1238,7 +1385,7 @@ export function Dashboard() {
   }
 
   async function handleDeleteProject() {
-    if (!projectToDelete || !organization || projectDeleteConfirmation !== "削除") {
+    if (!projectToDelete || !organization || !isOwner || projectDeleteConfirmation !== "削除") {
       return;
     }
 
@@ -1381,88 +1528,90 @@ export function Dashboard() {
                       </div>
                     ) : null}
                   </div>
-                  <div className="project-menu-wrap" ref={projectMenuRef}>
-                    <button
-                      aria-expanded={isProjectMenuOpen}
-                      aria-haspopup="menu"
-                      aria-label="プロジェクト設定"
-                      className="project-menu-button"
-                      type="button"
-                      onClick={(event) => {
-                        setIsProjectSelectMenuOpen(false);
-                        const rect = event.currentTarget.getBoundingClientRect();
-                        setIsProjectMenuOpen((isOpen) => {
-                          if (isOpen) {
-                            setProjectMenuPosition(null);
-                            return false;
-                          }
-
-                          setProjectMenuPosition({
-                            top: getFixedMenuTop(rect, 8, PROJECT_MENU_HEIGHT),
-                            left: getFixedMenuLeft(rect.left, PROJECT_MENU_WIDTH)
-                          });
-                          return true;
-                        });
-                      }}
-                    >
-                      <MoreHorizontal size={18} />
-                    </button>
-                    {isProjectMenuOpen && projectMenuPosition ? createPortal(
-                      <div
-                        className="project-menu"
-                        role="menu"
-                        style={{
-                          position: "fixed",
-                          top: projectMenuPosition.top,
-                          left: projectMenuPosition.left
-                        }}
-                      >
-                        <button
-                          className="project-menu-item"
-                          role="menuitem"
-                          type="button"
-                          onClick={() => {
-                            setIsProjectMenuOpen(false);
-                            setProjectMenuPosition(null);
-                            setIsProjectModalOpen(true);
-                          }}
-                        >
-                          プロジェクト作成
-                        </button>
-                        <button
-                          className="project-menu-item project-menu-item-danger"
-                          disabled={!selectedProject}
-                          role="menuitem"
-                          type="button"
-                          onClick={() => {
-                            if (!selectedProject) {
-                              return;
+                  {isOwner ? (
+                    <div className="project-menu-wrap" ref={projectMenuRef}>
+                      <button
+                        aria-expanded={isProjectMenuOpen}
+                        aria-haspopup="menu"
+                        aria-label="プロジェクト設定"
+                        className="project-menu-button"
+                        type="button"
+                        onClick={(event) => {
+                          setIsProjectSelectMenuOpen(false);
+                          const rect = event.currentTarget.getBoundingClientRect();
+                          setIsProjectMenuOpen((isOpen) => {
+                            if (isOpen) {
+                              setProjectMenuPosition(null);
+                              return false;
                             }
 
-                            setIsProjectMenuOpen(false);
-                            setProjectMenuPosition(null);
-                            setProjectToDelete(selectedProject);
+                            setProjectMenuPosition({
+                              top: getFixedMenuTop(rect, 8, PROJECT_MENU_HEIGHT),
+                              left: getFixedMenuLeft(rect.left, PROJECT_MENU_WIDTH)
+                            });
+                            return true;
+                          });
+                        }}
+                      >
+                        <MoreHorizontal size={18} />
+                      </button>
+                      {isProjectMenuOpen && projectMenuPosition ? createPortal(
+                        <div
+                          className="project-menu"
+                          role="menu"
+                          style={{
+                            position: "fixed",
+                            top: projectMenuPosition.top,
+                            left: projectMenuPosition.left
                           }}
                         >
-                          プロジェクト削除
-                        </button>
-                        <button
-                          className="project-menu-item"
-                          role="menuitem"
-                          type="button"
-                          onClick={() => {
-                            setIsProjectMenuOpen(false);
-                            setProjectMenuPosition(null);
-                            void loadMembers();
-                            setIsInviteModalOpen(true);
-                          }}
-                        >
-                          共有
-                        </button>
-                      </div>,
-                      document.body
-                    ) : null}
-                  </div>
+                          <button
+                            className="project-menu-item"
+                            role="menuitem"
+                            type="button"
+                            onClick={() => {
+                              setIsProjectMenuOpen(false);
+                              setProjectMenuPosition(null);
+                              setIsProjectModalOpen(true);
+                            }}
+                          >
+                            プロジェクト作成
+                          </button>
+                          <button
+                            className="project-menu-item project-menu-item-danger"
+                            disabled={!selectedProject}
+                            role="menuitem"
+                            type="button"
+                            onClick={() => {
+                              if (!selectedProject) {
+                                return;
+                              }
+
+                              setIsProjectMenuOpen(false);
+                              setProjectMenuPosition(null);
+                              setProjectToDelete(selectedProject);
+                            }}
+                          >
+                            プロジェクト削除
+                          </button>
+                          <button
+                            className="project-menu-item"
+                            role="menuitem"
+                            type="button"
+                            onClick={() => {
+                              setIsProjectMenuOpen(false);
+                              setProjectMenuPosition(null);
+                              void loadMembers();
+                              setIsInviteModalOpen(true);
+                            }}
+                          >
+                            共有
+                          </button>
+                        </div>,
+                        document.body
+                      ) : null}
+                    </div>
+                  ) : null}
                 </div>
               </div>
               <div className="report-list-controls">
@@ -1659,19 +1808,21 @@ export function Dashboard() {
                                     >
                                       リンクをコピー
                                     </button>
-                                    <button
-                                      className="report-list-menu-item report-list-menu-item-danger"
-                                      role="menuitem"
-                                      type="button"
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        setOpenReportMenuId(null);
-                                        setReportMenuPosition(null);
-                                        setReportToDelete(report);
-                                      }}
-                                    >
-                                      削除
-                                    </button>
+                                    {isOwner ? (
+                                      <button
+                                        className="report-list-menu-item report-list-menu-item-danger"
+                                        role="menuitem"
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setOpenReportMenuId(null);
+                                          setReportMenuPosition(null);
+                                          setReportToDelete(report);
+                                        }}
+                                      >
+                                        削除
+                                      </button>
+                                    ) : null}
                                   </div>,
                                   document.body
                                 )
@@ -1691,7 +1842,10 @@ export function Dashboard() {
               <div className="panel-account">
                 <div className="account-menu-wrap" ref={accountMenuRef}>
                   <div className="account-menu-button">
-                    <span>{accountLabel}</span>
+                    <span className="account-identity">
+                      <span className="account-name">{accountLabel}</span>
+                      <span className="account-role">{roleLabels[ownRole]}</span>
+                    </span>
                     <button
                       aria-expanded={isAccountMenuOpen}
                       aria-haspopup="menu"
@@ -1763,8 +1917,9 @@ export function Dashboard() {
               getUserName={(userId) => displayUserName(userId, profilesById)}
               loadProfilesForUsers={loadProfilesForUsers}
               members={members}
+              canManage={isOwner}
+              currentUserId={user?.id ?? null}
               onChanged={() => loadReports()}
-              onDeleteReport={setReportToDelete}
               onNotify={showToast}
               report={selectedReport}
             />
@@ -1773,7 +1928,13 @@ export function Dashboard() {
       </div>
 
       {isInviteModalOpen ? (
-        <div className="modal-backdrop" onClick={() => setIsInviteModalOpen(false)}>
+        <div
+          className="modal-backdrop"
+          onClick={() => {
+            setIsInviteModalOpen(false);
+            setIsInviteFormModalOpen(false);
+          }}
+        >
           <section
             aria-labelledby="invite-dialog-title"
             aria-modal="true"
@@ -1783,18 +1944,30 @@ export function Dashboard() {
           >
             <div className="modal-header">
               <div>
-                <h2 id="invite-dialog-title">メンバーを招待</h2>
+                <h2 id="invite-dialog-title">共有</h2>
               </div>
-              <button
-                aria-label="閉じる"
-                className="modal-close"
-                type="button"
-                onClick={() => setIsInviteModalOpen(false)}
-              >
-                <X size={16} />
-              </button>
+              <div className="modal-header-actions">
+                <button
+                  className="button modal-header-button"
+                  type="button"
+                  onClick={() => setIsInviteFormModalOpen(true)}
+                >
+                  招待
+                </button>
+                <button
+                  aria-label="閉じる"
+                  className="modal-close"
+                  type="button"
+                  onClick={() => {
+                    setIsInviteModalOpen(false);
+                    setIsInviteFormModalOpen(false);
+                  }}
+                >
+                  <X size={16} />
+                </button>
+              </div>
             </div>
-            <form className="modal-body" onSubmit={handleCreateInvite}>
+            <div className="modal-body">
               <section className="member-section" aria-label="メンバー">
                 <h3>メンバー</h3>
                 {members.length ? (
@@ -1811,19 +1984,70 @@ export function Dashboard() {
                               {member.email || "メールアドレス未登録"}
                             </span>
                           </div>
-                          <span className="member-delete-wrap tooltip-wrap">
+                          <div
+                            className="member-actions"
+                            ref={openMemberMenuId === member.id ? memberMenuRef : null}
+                          >
                             <button
-                              aria-label="削除"
-                              className="member-delete-button"
+                              aria-expanded={openMemberMenuId === member.id}
+                              aria-haspopup="menu"
+                              className="member-role-button"
                               type="button"
-                              onClick={() => handleDeleteMember(member.id)}
+                              onClick={() =>
+                                setOpenMemberMenuId((currentId) =>
+                                  currentId === member.id ? null : member.id
+                                )
+                              }
                             >
-                              <Trash2 size={14} />
+                              <span>{roleLabels[member.role]}</span>
+                              <ChevronDown size={16} />
                             </button>
-                            <span className="tooltip" role="tooltip">
-                              削除
-                            </span>
-                          </span>
+                            {openMemberMenuId === member.id ? (
+                              <div className="member-role-menu" role="menu">
+                                <button
+                                  className={
+                                    member.role === "owner"
+                                      ? "member-role-menu-item member-role-menu-item-selected"
+                                      : "member-role-menu-item"
+                                  }
+                                  role="menuitem"
+                                  type="button"
+                                  onClick={() => {
+                                    setOpenMemberMenuId(null);
+                                    void handleChangeMemberRole(member.id, "owner");
+                                  }}
+                                >
+                                  管理者
+                                </button>
+                                <button
+                                  className={
+                                    member.role === "member"
+                                      ? "member-role-menu-item member-role-menu-item-selected"
+                                      : "member-role-menu-item"
+                                  }
+                                  role="menuitem"
+                                  type="button"
+                                  onClick={() => {
+                                    setOpenMemberMenuId(null);
+                                    void handleChangeMemberRole(member.id, "member");
+                                  }}
+                                >
+                                  メンバー
+                                </button>
+                                <button
+                                  className="member-role-menu-item member-role-menu-item-danger"
+                                  role="menuitem"
+                                  type="button"
+                                  onClick={() => {
+                                    setOpenMemberMenuId(null);
+                                    void handleDeleteMember(member.id);
+                                  }}
+                                >
+                                  削除
+                                </button>
+                              </div>
+                            ) : null}
+                          </div>
                         </li>
                       );
                     })}
@@ -1832,10 +2056,123 @@ export function Dashboard() {
                   <p className="member-empty">メンバーはいません。</p>
                 )}
               </section>
+            </div>
+          </section>
+        </div>
+      ) : null}
+
+      {isInviteFormModalOpen ? (
+        <div
+          className="modal-backdrop modal-backdrop-stacked"
+          onClick={() => setIsInviteFormModalOpen(false)}
+        >
+          <section
+            aria-labelledby="invite-form-dialog-title"
+            aria-modal="true"
+            className="modal"
+            role="dialog"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="modal-header">
+              <div>
+                <h2 id="invite-form-dialog-title">招待</h2>
+              </div>
+              <button
+                aria-label="閉じる"
+                className="modal-close"
+                type="button"
+                onClick={() => setIsInviteFormModalOpen(false)}
+              >
+                <X size={16} />
+              </button>
+            </div>
+            <form className="modal-body" onSubmit={handleCreateInvite}>
+              <div className="form-row">
+                <label htmlFor="invite-email">メールアドレス</label>
+                <input
+                  className="input"
+                  id="invite-email"
+                  type="email"
+                  value={inviteEmail}
+                  onChange={(event) => setInviteEmail(event.target.value)}
+                  required
+                />
+              </div>
+              <div className="form-row">
+                <label htmlFor="invite-display-name">ID</label>
+                <input
+                  className="input"
+                  id="invite-display-name"
+                  value={inviteDisplayName}
+                  onChange={(event) => setInviteDisplayName(event.target.value)}
+                  required
+                />
+              </div>
+              <div className="form-row">
+                <label htmlFor="invite-password">パスワード</label>
+                <input
+                  className="input"
+                  id="invite-password"
+                  minLength={6}
+                  type="password"
+                  value={invitePassword}
+                  onChange={(event) => setInvitePassword(event.target.value)}
+                  required
+                />
+              </div>
+              <div className="form-row">
+                <label id="invite-role-label">権限</label>
+                <div className="invite-role-menu-wrap" ref={inviteRoleMenuRef}>
+                  <button
+                    aria-expanded={isInviteRoleMenuOpen}
+                    aria-haspopup="menu"
+                    aria-labelledby="invite-role-label"
+                    className="member-role-button invite-role-button"
+                    type="button"
+                    onClick={() => setIsInviteRoleMenuOpen((isOpen) => !isOpen)}
+                  >
+                    <span>{roleLabels[inviteRole]}</span>
+                    <ChevronDown size={18} />
+                  </button>
+                  {isInviteRoleMenuOpen ? (
+                    <div className="member-role-menu invite-role-menu" role="menu">
+                      <button
+                        className={
+                          inviteRole === "member"
+                            ? "member-role-menu-item member-role-menu-item-selected"
+                            : "member-role-menu-item"
+                        }
+                        role="menuitem"
+                        type="button"
+                        onClick={() => {
+                          setInviteRole("member");
+                          setIsInviteRoleMenuOpen(false);
+                        }}
+                      >
+                        メンバー
+                      </button>
+                      <button
+                        className={
+                          inviteRole === "owner"
+                            ? "member-role-menu-item member-role-menu-item-selected"
+                            : "member-role-menu-item"
+                        }
+                        role="menuitem"
+                        type="button"
+                        onClick={() => {
+                          setInviteRole("owner");
+                          setIsInviteRoleMenuOpen(false);
+                        }}
+                      >
+                        管理者
+                      </button>
+                    </div>
+                  ) : null}
+                </div>
+              </div>
               <div className="modal-actions">
                 <button className="button button-primary" type="submit">
-                  <Copy size={16} />
-                  招待リンクをコピー
+                  招待リンクを発行
                 </button>
               </div>
             </form>
@@ -2055,21 +2392,23 @@ export function Dashboard() {
 
 function ReportDetail({
   report,
+  canManage,
+  currentUserId,
   getAssetUrl,
   getUserName,
   loadProfilesForUsers,
   members,
   onChanged,
-  onDeleteReport,
   onNotify
 }: {
   report: Report | null;
+  canManage: boolean;
+  currentUserId: string | null;
   getAssetUrl: (path: string) => string;
   getUserName: (userId: string | null | undefined) => string;
   loadProfilesForUsers: (userIds: Array<string | null | undefined>) => Promise<void>;
-  members: Profile[];
+  members: Member[];
   onChanged: () => Promise<void>;
-  onDeleteReport: (report: Report) => void;
   onNotify: (message: string, tone?: ToastTone) => void;
 }) {
   const [description, setDescription] = useState("");
@@ -2376,6 +2715,11 @@ function ReportDetail({
       return;
     }
 
+    const targetComment = comments.find((comment) => comment.id === commentId);
+    if (!canManage && targetComment?.created_by !== currentUserId) {
+      return;
+    }
+
     const supabase = getSupabaseClient();
     const { error } = await supabase
       .from("report_comments")
@@ -2395,6 +2739,11 @@ function ReportDetail({
 
   async function handleDeleteThreadComment(commentId: string) {
     if (!report) {
+      return;
+    }
+
+    const targetComment = comments.find((comment) => comment.id === commentId);
+    if (!canManage && targetComment?.created_by !== currentUserId) {
       return;
     }
 
@@ -2672,6 +3021,7 @@ function ReportDetail({
             <div className="thread-list">
               {comments.map((comment) => {
                 const authorName = getUserName(comment.created_by);
+                const canEditComment = canManage || comment.created_by === currentUserId;
 
                 return (
                   <article className="thread-item" key={comment.id}>
@@ -2681,42 +3031,44 @@ function ReportDetail({
                           <strong>{authorName}</strong>
                           <span>{formatDate(comment.created_at)}</span>
                         </div>
-                        <div className="comment-menu-wrap">
-                          <button
-                            aria-label="コメントメニュー"
-                            className="comment-menu-button"
-                            type="button"
-                            onClick={() =>
-                              setOpenCommentMenuId((currentId) =>
-                                currentId === comment.id ? null : comment.id
-                              )
-                            }
-                          >
-                            <MoreHorizontal size={16} />
-                          </button>
-                          {openCommentMenuId === comment.id ? (
-                            <div className="comment-menu" role="menu">
-                              <button
-                                className="comment-menu-item"
-                                role="menuitem"
-                                type="button"
-                                onClick={() => handleEditComment(comment)}
-                              >
-                                <Pencil size={14} />
-                                編集
-                              </button>
-                              <button
-                                className="comment-menu-item comment-menu-item-danger"
-                                role="menuitem"
-                                type="button"
-                                onClick={() => handleDeleteThreadComment(comment.id)}
-                              >
-                                <Trash2 size={14} />
-                                削除
-                              </button>
-                            </div>
-                          ) : null}
-                        </div>
+                        {canEditComment ? (
+                          <div className="comment-menu-wrap">
+                            <button
+                              aria-label="コメントメニュー"
+                              className="comment-menu-button"
+                              type="button"
+                              onClick={() =>
+                                setOpenCommentMenuId((currentId) =>
+                                  currentId === comment.id ? null : comment.id
+                                )
+                              }
+                            >
+                              <MoreHorizontal size={16} />
+                            </button>
+                            {openCommentMenuId === comment.id ? (
+                              <div className="comment-menu" role="menu">
+                                <button
+                                  className="comment-menu-item"
+                                  role="menuitem"
+                                  type="button"
+                                  onClick={() => handleEditComment(comment)}
+                                >
+                                  <Pencil size={14} />
+                                  編集
+                                </button>
+                                <button
+                                  className="comment-menu-item comment-menu-item-danger"
+                                  role="menuitem"
+                                  type="button"
+                                  onClick={() => handleDeleteThreadComment(comment.id)}
+                                >
+                                  <Trash2 size={14} />
+                                  削除
+                                </button>
+                              </div>
+                            ) : null}
+                          </div>
+                        ) : null}
                       </div>
                       {editingCommentId === comment.id ? (
                         <div className="thread-edit">
