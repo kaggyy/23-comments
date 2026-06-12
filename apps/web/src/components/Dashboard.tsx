@@ -111,6 +111,7 @@ const REPORT_STATUS_MENU_HEIGHT = 144;
 const REPORT_LIST_MENU_WIDTH = 112;
 const REPORT_LIST_MENU_HEIGHT = 84;
 const DEFAULT_VISIBLE_STATUSES = statuses.filter((status) => status !== "archived");
+const RECENT_ASSIGNEE_STORAGE_KEY = "recentAssigneeIds";
 const COMMENT_LINK_PATTERN = /(https?:\/\/[^\s<>()]+|www\.[^\s<>()]+)/gi;
 const COMMENT_LINK_TRAILING_PUNCTUATION = /[.,!?;:。！？、)）]+$/;
 
@@ -126,6 +127,30 @@ function getFixedMenuLeft(anchorLeft: number, menuWidth: number) {
     MENU_EDGE_PADDING,
     window.innerWidth - menuWidth - MENU_EDGE_PADDING
   );
+}
+
+function readRecentAssigneeIds() {
+  if (typeof window === "undefined") return [];
+
+  try {
+    const parsed = JSON.parse(localStorage.getItem(RECENT_ASSIGNEE_STORAGE_KEY) ?? "[]");
+
+    return Array.isArray(parsed)
+      ? parsed.filter((value): value is string => typeof value === "string")
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeRecentAssigneeIds(assigneeIds: string[]) {
+  if (typeof window === "undefined") return;
+
+  localStorage.setItem(RECENT_ASSIGNEE_STORAGE_KEY, JSON.stringify(assigneeIds));
+}
+
+function moveAssigneeToRecentTop(currentAssigneeIds: string[], memberId: string) {
+  return [memberId, ...currentAssigneeIds.filter((assigneeId) => assigneeId !== memberId)];
 }
 
 function getFixedMenuRight(anchorRight: number, menuWidth: number) {
@@ -374,6 +399,13 @@ export function Dashboard() {
     } else {
       router.push(url);
     }
+  }
+
+  function selectProject(id: string) {
+    if (id !== selectedProjectId && selectedReportId) {
+      selectReport(null, true);
+    }
+    setSelectedProjectId(id);
   }
 
   const [user, setUser] = useState<User | null>(null);
@@ -1292,7 +1324,7 @@ export function Dashboard() {
                             role="menuitem"
                             type="button"
                             onClick={() => {
-                              setSelectedProjectId(project.id);
+                              selectProject(project.id);
                               setIsProjectSelectMenuOpen(false);
                             }}
                           >
@@ -1960,6 +1992,7 @@ function ReportDetail({
   const [description, setDescription] = useState("");
   const [status, setStatus] = useState<ReportStatus>("open");
   const [assigneeIds, setAssigneeIds] = useState<string[]>([]);
+  const [recentAssigneeIds, setRecentAssigneeIds] = useState<string[]>(readRecentAssigneeIds);
   const [comments, setComments] = useState<Comment[]>([]);
   const [commentBody, setCommentBody] = useState("");
   const [editingField, setEditingField] = useState<
@@ -2179,6 +2212,14 @@ function ReportDetail({
     const saved = await saveReportChanges({ assigneeIds: nextAssigneeIds });
 
     if (saved) {
+      if (addedAssigneeIds.length) {
+        const nextRecentAssigneeIds = moveAssigneeToRecentTop(
+          recentAssigneeIds,
+          addedAssigneeIds[0]
+        );
+        setRecentAssigneeIds(nextRecentAssigneeIds);
+        writeRecentAssigneeIds(nextRecentAssigneeIds);
+      }
       await notifyAddedAssignees(addedAssigneeIds);
     }
   }
@@ -2291,6 +2332,35 @@ function ReportDetail({
     setEditingCommentBody("");
     await loadComments(report.id);
   }
+
+  const orderedMembers = useMemo(() => {
+    const memberOrder = new Map<string, number>();
+    const orderedIds = [
+      ...recentAssigneeIds,
+      ...assigneeIds.filter((assigneeId) => !recentAssigneeIds.includes(assigneeId))
+    ];
+
+    orderedIds.forEach((assigneeId, index) => {
+      memberOrder.set(assigneeId, index);
+    });
+
+    return members
+      .map((member, index) => ({ index, member }))
+      .sort((first, second) => {
+        const firstOrder = memberOrder.get(first.member.id);
+        const secondOrder = memberOrder.get(second.member.id);
+
+        if (firstOrder !== undefined && secondOrder !== undefined) {
+          return firstOrder - secondOrder;
+        }
+
+        if (firstOrder !== undefined) return -1;
+        if (secondOrder !== undefined) return 1;
+
+        return first.index - second.index;
+      })
+      .map(({ member }) => member);
+  }, [assigneeIds, members, recentAssigneeIds]);
 
   if (!report) {
     return (
@@ -2452,7 +2522,7 @@ function ReportDetail({
                 </button>
                 {editingField === "assignees" ? (
                   <div className="assignee-menu" role="menu">
-                    {members.map((member) => {
+                    {orderedMembers.map((member) => {
                       const memberName =
                         member.display_name.trim() || member.email || shortId(member.id);
                       const isSelected = assigneeIds.includes(member.id);
