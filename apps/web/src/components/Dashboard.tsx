@@ -103,9 +103,56 @@ type ScreenshotFocusStyle = CSSProperties & {
 
 const SPLIT_MIN_PERCENT = 22;
 const SPLIT_MAX_PERCENT = 45;
+const MENU_EDGE_PADDING = 8;
+const PROJECT_MENU_WIDTH = 168;
+const PROJECT_MENU_HEIGHT = 124;
+const REPORT_STATUS_MENU_WIDTH = 132;
+const REPORT_STATUS_MENU_HEIGHT = 144;
+const REPORT_LIST_MENU_WIDTH = 112;
+const REPORT_LIST_MENU_HEIGHT = 84;
 const DEFAULT_VISIBLE_STATUSES = statuses.filter((status) => status !== "archived");
 const COMMENT_LINK_PATTERN = /(https?:\/\/[^\s<>()]+|www\.[^\s<>()]+)/gi;
 const COMMENT_LINK_TRAILING_PUNCTUATION = /[.,!?;:。！？、)）]+$/;
+
+function clampMenuPosition(value: number, min: number, max: number) {
+  return Math.min(Math.max(value, min), Math.max(min, max));
+}
+
+function getFixedMenuLeft(anchorLeft: number, menuWidth: number) {
+  if (typeof window === "undefined") return anchorLeft;
+
+  return clampMenuPosition(
+    anchorLeft,
+    MENU_EDGE_PADDING,
+    window.innerWidth - menuWidth - MENU_EDGE_PADDING
+  );
+}
+
+function getFixedMenuRight(anchorRight: number, menuWidth: number) {
+  if (typeof window === "undefined") return 0;
+
+  return clampMenuPosition(
+    window.innerWidth - anchorRight,
+    MENU_EDGE_PADDING,
+    window.innerWidth - menuWidth - MENU_EDGE_PADDING
+  );
+}
+
+function getFixedMenuTop(anchorRect: DOMRect, gap: number, menuHeight: number) {
+  const below = anchorRect.bottom + gap;
+
+  if (typeof window === "undefined") return below;
+  if (below + menuHeight <= window.innerHeight - MENU_EDGE_PADDING) return below;
+
+  const above = anchorRect.top - gap - menuHeight;
+  if (above >= MENU_EDGE_PADDING) return above;
+
+  return clampMenuPosition(
+    below,
+    MENU_EDGE_PADDING,
+    window.innerHeight - menuHeight - MENU_EDGE_PADDING
+  );
+}
 
 function displayProjectName(name: string | null | undefined) {
   return name === "Website feedback" ? "Webサイトフィードバック" : name;
@@ -389,8 +436,15 @@ export function Dashboard() {
 
       return matchesProject && matchesSearch && matchesStatus && matchesAssignee;
     });
+    const linkedReport = selectedReportId
+      ? reports.find((report) => report.id === selectedReportId)
+      : null;
+    const reportsToDisplay =
+      linkedReport && !filteredReports.some((report) => report.id === linkedReport.id)
+        ? [...filteredReports, linkedReport]
+        : filteredReports;
 
-    return [...filteredReports].sort((firstReport, secondReport) => {
+    return [...reportsToDisplay].sort((firstReport, secondReport) => {
       const createdAtComparison =
         Date.parse(secondReport.created_at) - Date.parse(firstReport.created_at);
 
@@ -400,7 +454,15 @@ export function Dashboard() {
 
       return firstReport.id.localeCompare(secondReport.id);
     });
-  }, [isAssignedToMeOnly, reportSearchQuery, reports, selectedProjectId, user?.id, visibleStatuses]);
+  }, [
+    isAssignedToMeOnly,
+    reportSearchQuery,
+    reports,
+    selectedProjectId,
+    selectedReportId,
+    user?.id,
+    visibleStatuses
+  ]);
 
   const reportGroups = useMemo(() => {
     const groups: Array<{ url: string; reports: Report[] }> = [];
@@ -445,13 +507,17 @@ export function Dashboard() {
   }, [selectedProjectId]);
 
   useEffect(() => {
+    if (state !== "ready") {
+      return;
+    }
+
     if (
       selectedReportId &&
-      !visibleReports.some((report) => report.id === selectedReportId)
+      !reports.some((report) => report.id === selectedReportId)
     ) {
       selectReport(null, true);
     }
-  }, [selectedReportId, visibleReports]);
+  }, [reports, selectedReportId, state]);
 
   useEffect(() => {
     if (!toast) {
@@ -892,7 +958,7 @@ export function Dashboard() {
       ? nextReports.find((report) => report.id === currentId)
       : null;
     const nextId =
-      currentReport && visibleStatuses.includes(currentReport.status)
+      currentReport
         ? currentId
         : (nextReports.find((report) => visibleStatuses.includes(report.status))?.id ?? null);
     if (nextId !== currentId) {
@@ -1091,9 +1157,6 @@ export function Dashboard() {
     setOpenReportStatusMenuId(null);
     setReportStatusMenuPosition(null);
 
-    if (selectedReportId === report.id && !visibleStatuses.includes(nextStatus)) {
-      selectReport(null, true);
-    }
   }
 
   async function handleDeleteProject() {
@@ -1256,8 +1319,8 @@ export function Dashboard() {
                           }
 
                           setProjectMenuPosition({
-                            top: rect.bottom + 8,
-                            left: rect.left
+                            top: getFixedMenuTop(rect, 8, PROJECT_MENU_HEIGHT),
+                            left: getFixedMenuLeft(rect.left, PROJECT_MENU_WIDTH)
                           });
                           return true;
                         });
@@ -1428,8 +1491,8 @@ export function Dashboard() {
                                     setOpenReportMenuId(null);
                                     setReportMenuPosition(null);
                                     setReportStatusMenuPosition({
-                                      top: rect.bottom + 4,
-                                      left: rect.left
+                                      top: getFixedMenuTop(rect, 4, REPORT_STATUS_MENU_HEIGHT),
+                                      left: getFixedMenuLeft(rect.left, REPORT_STATUS_MENU_WIDTH)
                                     });
                                     setOpenReportStatusMenuId(report.id);
                                   }
@@ -1489,8 +1552,8 @@ export function Dashboard() {
                                 } else {
                                   const rect = e.currentTarget.getBoundingClientRect();
                                   setReportMenuPosition({
-                                    top: rect.bottom + 4,
-                                    right: window.innerWidth - rect.right
+                                    top: getFixedMenuTop(rect, 4, REPORT_LIST_MENU_HEIGHT),
+                                    right: getFixedMenuRight(rect.right, REPORT_LIST_MENU_WIDTH)
                                   });
                                   setOpenReportMenuId(report.id);
                                 }
@@ -1909,6 +1972,12 @@ function ReportDetail({
   const [attachmentModalUrl, setAttachmentModalUrl] = useState<string | null>(null);
   const statusMenuRef = useRef<HTMLDivElement | null>(null);
   const assigneeMenuRef = useRef<HTMLDivElement | null>(null);
+  const commentComposerRef = useRef<HTMLTextAreaElement | null>(null);
+
+  function resizeCommentComposer(textarea: HTMLTextAreaElement) {
+    textarea.style.height = "auto";
+    textarea.style.height = `${Math.min(textarea.scrollHeight, 96)}px`;
+  }
 
   useEffect(() => {
     if (!report) {
@@ -1997,6 +2066,12 @@ function ReportDetail({
       window.removeEventListener("keydown", handleKeyDown);
     };
   }, [openCommentMenuId]);
+
+  useEffect(() => {
+    if (commentComposerRef.current) {
+      resizeCommentComposer(commentComposerRef.current);
+    }
+  }, [commentBody]);
 
   async function loadComments(reportId: string) {
     const supabase = getSupabaseClient();
@@ -2148,6 +2223,22 @@ function ReportDetail({
 
     setCommentBody("");
     await loadComments(report.id);
+  }
+
+  function handleCommentComposerKeyDown(event: ReactKeyboardEvent<HTMLTextAreaElement>) {
+    if (event.key !== "Enter") {
+      return;
+    }
+
+    if (event.metaKey) {
+      event.preventDefault();
+      event.currentTarget.form?.requestSubmit();
+      return;
+    }
+
+    if (!event.shiftKey) {
+      event.preventDefault();
+    }
   }
 
   function handleEditComment(comment: Comment) {
@@ -2407,11 +2498,17 @@ function ReportDetail({
 
         <section className="thread-section">
           <form className="thread-composer" onSubmit={handleAddComment}>
-            <input
+            <textarea
               className="thread-input"
               placeholder="コメントを追加"
+              ref={commentComposerRef}
+              rows={1}
               value={commentBody}
-              onChange={(event) => setCommentBody(event.target.value)}
+              onChange={(event) => {
+                setCommentBody(event.target.value);
+                resizeCommentComposer(event.currentTarget);
+              }}
+              onKeyDown={handleCommentComposerKeyDown}
             />
             <button className="thread-submit" disabled={!commentBody.trim()} type="submit">
               送信

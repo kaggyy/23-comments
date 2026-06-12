@@ -804,7 +804,7 @@ h1 {
 
 .report-search-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 36px 36px;
+  grid-template-columns: minmax(0, 1fr) 36px;
   gap: 8px;
   align-items: center;
 }
@@ -1628,6 +1628,9 @@ h1 {
   background: transparent;
   border: 0;
   outline: none;
+  line-height: 1.5;
+  overflow-y: auto;
+  resize: none;
 }
 
 .thread-input::placeholder {
