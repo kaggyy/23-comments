@@ -4,7 +4,8 @@ import type {
   CSSProperties,
   FormEvent,
   KeyboardEvent as ReactKeyboardEvent,
-  PointerEvent as ReactPointerEvent
+  PointerEvent as ReactPointerEvent,
+  ReactNode
 } from "react";
 import type { User } from "@supabase/supabase-js";
 import {
@@ -103,9 +104,54 @@ type ScreenshotFocusStyle = CSSProperties & {
 const SPLIT_MIN_PERCENT = 22;
 const SPLIT_MAX_PERCENT = 45;
 const DEFAULT_VISIBLE_STATUSES = statuses.filter((status) => status !== "archived");
+const COMMENT_LINK_PATTERN = /(https?:\/\/[^\s<>()]+|www\.[^\s<>()]+)/gi;
+const COMMENT_LINK_TRAILING_PUNCTUATION = /[.,!?;:。！？、)）]+$/;
 
 function displayProjectName(name: string | null | undefined) {
   return name === "Website feedback" ? "Webサイトフィードバック" : name;
+}
+
+function renderLinkedText(body: string, className: string): ReactNode[] {
+  const parts: ReactNode[] = [];
+  let lastIndex = 0;
+
+  for (const match of body.matchAll(COMMENT_LINK_PATTERN)) {
+    const rawUrl = match[0];
+    const index = match.index ?? 0;
+    const trailingMatch = rawUrl.match(COMMENT_LINK_TRAILING_PUNCTUATION);
+    const trailing = trailingMatch?.[0] ?? "";
+    const url = trailing ? rawUrl.slice(0, -trailing.length) : rawUrl;
+    const href = url.startsWith("www.") ? `https://${url}` : url;
+
+    if (index > lastIndex) {
+      parts.push(body.slice(lastIndex, index));
+    }
+
+    parts.push(
+      <a
+        className={className}
+        href={href}
+        key={`${index}-${url}`}
+        rel="noreferrer"
+        target="_blank"
+        onClick={(event) => event.stopPropagation()}
+      >
+        {url}
+      </a>
+    );
+
+    if (trailing) {
+      parts.push(trailing);
+    }
+
+    lastIndex = index + rawUrl.length;
+  }
+
+  if (lastIndex < body.length) {
+    parts.push(body.slice(lastIndex));
+  }
+
+  return parts.length ? parts : [body];
 }
 
 function displayReportTitle(report: Pick<Report, "description" | "page_title">) {
@@ -292,12 +338,16 @@ export function Dashboard() {
   const [openReportMenuId, setOpenReportMenuId] = useState<string | null>(null);
   const [reportMenuPosition, setReportMenuPosition] = useState<{ top: number; right: number } | null>(null);
   const reportMenuRef = useRef<HTMLDivElement | null>(null);
+  const [openReportStatusMenuId, setOpenReportStatusMenuId] = useState<string | null>(null);
+  const [reportStatusMenuPosition, setReportStatusMenuPosition] = useState<{ top: number; left: number } | null>(null);
+  const reportStatusMenuRef = useRef<HTMLDivElement | null>(null);
   const [isProjectSelectMenuOpen, setIsProjectSelectMenuOpen] = useState(false);
   const [isProjectMenuOpen, setIsProjectMenuOpen] = useState(false);
   const [isStatusFilterMenuOpen, setIsStatusFilterMenuOpen] = useState(false);
   const [visibleStatuses, setVisibleStatuses] = useState<ReportStatus[]>([
     ...DEFAULT_VISIBLE_STATUSES
   ]);
+  const [isAssignedToMeOnly, setIsAssignedToMeOnly] = useState(false);
   const [isAccountMenuOpen, setIsAccountMenuOpen] = useState(false);
   const [reportSearchQuery, setReportSearchQuery] = useState("");
   const [toast, setToast] = useState<ToastState | null>(null);
@@ -319,8 +369,10 @@ export function Dashboard() {
         selectedProjectId === "all" || report.project_id === selectedProjectId;
       const matchesSearch = !query || displayReportTitle(report).toLowerCase().includes(query);
       const matchesStatus = visibleStatuses.includes(report.status);
+      const matchesAssignee =
+        !isAssignedToMeOnly || Boolean(user?.id && (report.assignee_ids ?? []).includes(user.id));
 
-      return matchesProject && matchesSearch && matchesStatus;
+      return matchesProject && matchesSearch && matchesStatus && matchesAssignee;
     });
 
     return [...filteredReports].sort((firstReport, secondReport) => {
@@ -333,7 +385,7 @@ export function Dashboard() {
 
       return firstReport.id.localeCompare(secondReport.id);
     });
-  }, [reportSearchQuery, reports, selectedProjectId, visibleStatuses]);
+  }, [isAssignedToMeOnly, reportSearchQuery, reports, selectedProjectId, user?.id, visibleStatuses]);
 
   const reportGroups = useMemo(() => {
     const groups: Array<{ url: string; reports: Report[] }> = [];
@@ -463,16 +515,26 @@ export function Dashboard() {
   }, [isAccountMenuOpen, isProjectMenuOpen, isProjectSelectMenuOpen, isStatusFilterMenuOpen]);
 
   useEffect(() => {
-    if (!openReportMenuId) return;
+    if (!openReportMenuId && !openReportStatusMenuId) return;
 
     function handlePointerDown(event: PointerEvent) {
       const target = event.target as Element;
       if (
+        openReportMenuId &&
         !target?.closest(".report-list-menu-wrap") &&
         !reportMenuRef.current?.contains(target)
       ) {
         setOpenReportMenuId(null);
         setReportMenuPosition(null);
+      }
+
+      if (
+        openReportStatusMenuId &&
+        !target?.closest(".report-list-status-menu-wrap") &&
+        !reportStatusMenuRef.current?.contains(target)
+      ) {
+        setOpenReportStatusMenuId(null);
+        setReportStatusMenuPosition(null);
       }
     }
 
@@ -480,6 +542,8 @@ export function Dashboard() {
       if (event.key === "Escape") {
         setOpenReportMenuId(null);
         setReportMenuPosition(null);
+        setOpenReportStatusMenuId(null);
+        setReportStatusMenuPosition(null);
       }
     }
 
@@ -489,7 +553,7 @@ export function Dashboard() {
       document.removeEventListener("pointerdown", handlePointerDown);
       window.removeEventListener("keydown", handleKeyDown);
     };
-  }, [openReportMenuId]);
+  }, [openReportMenuId, openReportStatusMenuId]);
 
   function updateSplitFromPointer(event: ReactPointerEvent<HTMLDivElement>) {
     const container = event.currentTarget.parentElement;
@@ -961,6 +1025,40 @@ export function Dashboard() {
     await loadReports(targetReport.organization_id);
   }
 
+  async function handleListStatusChange(report: Report, nextStatus: ReportStatus) {
+    if (report.status === nextStatus) {
+      setOpenReportStatusMenuId(null);
+      setReportStatusMenuPosition(null);
+      return;
+    }
+
+    const supabase = getSupabaseClient();
+    const { error } = await supabase
+      .from("reports")
+      .update({ status: nextStatus })
+      .eq("id", report.id)
+      .eq("organization_id", report.organization_id);
+
+    if (error) {
+      showToast(error.message, "error");
+      return;
+    }
+
+    setReports((currentReports) =>
+      currentReports.map((currentReport) =>
+        currentReport.id === report.id
+          ? { ...currentReport, status: nextStatus }
+          : currentReport
+      )
+    );
+    setOpenReportStatusMenuId(null);
+    setReportStatusMenuPosition(null);
+
+    if (selectedReportId === report.id && !visibleStatuses.includes(nextStatus)) {
+      selectReport(null, true);
+    }
+  }
+
   async function handleDeleteProject() {
     if (!projectToDelete || !organization) {
       return;
@@ -1179,7 +1277,7 @@ export function Dashboard() {
                       aria-haspopup="menu"
                       aria-label="ステータスフィルター"
                       className={
-                        visibleStatuses.length < statuses.length
+                        visibleStatuses.length < statuses.length || isAssignedToMeOnly
                           ? "report-filter-button report-filter-button-active"
                           : "report-filter-button"
                       }
@@ -1212,6 +1310,16 @@ export function Dashboard() {
                             {visibleStatuses.includes(s) ? <Check size={14} /> : null}
                           </button>
                         ))}
+                        <button
+                          aria-checked={isAssignedToMeOnly}
+                          className="report-filter-menu-item report-filter-menu-item-separated"
+                          role="menuitemcheckbox"
+                          type="button"
+                          onClick={() => setIsAssignedToMeOnly((isOnly) => !isOnly)}
+                        >
+                          自分が担当
+                          {isAssignedToMeOnly ? <Check size={14} /> : null}
+                        </button>
                       </div>
                     ) : null}
                   </div>
@@ -1240,18 +1348,73 @@ export function Dashboard() {
                           key={report.id}
                           role="listitem"
                         >
-                          <button
-                            className="report-list-item-select"
-                            type="button"
-                            onClick={() => selectReport(report.id)}
-                          >
-                            <span
-                              aria-label={statusLabels[report.status]}
-                              className={`status-dot ${statusClass(report.status)}`}
-                              title={statusLabels[report.status]}
-                            />
-                            <span className="report-list-title">{displayReportTitle(report)}</span>
-                          </button>
+                          <div className="report-list-item-content">
+                            <div
+                              className={`report-list-status-menu-wrap${openReportStatusMenuId === report.id ? " report-list-status-menu-open" : ""}`}
+                            >
+                              <button
+                                aria-expanded={openReportStatusMenuId === report.id}
+                                aria-haspopup="menu"
+                                className={`status-button report-list-status-button ${statusClass(report.status)}`}
+                                type="button"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  if (openReportStatusMenuId === report.id) {
+                                    setOpenReportStatusMenuId(null);
+                                    setReportStatusMenuPosition(null);
+                                  } else {
+                                    const rect = event.currentTarget.getBoundingClientRect();
+                                    setOpenReportMenuId(null);
+                                    setReportMenuPosition(null);
+                                    setReportStatusMenuPosition({
+                                      top: rect.bottom + 4,
+                                      left: rect.left
+                                    });
+                                    setOpenReportStatusMenuId(report.id);
+                                  }
+                                }}
+                              >
+                                {statusLabels[report.status]}
+                              </button>
+                              {openReportStatusMenuId === report.id && reportStatusMenuPosition
+                                ? createPortal(
+                                    <div
+                                      ref={reportStatusMenuRef}
+                                      className="status-menu report-list-status-menu"
+                                      role="menu"
+                                      style={{
+                                        position: "fixed",
+                                        top: reportStatusMenuPosition.top,
+                                        left: reportStatusMenuPosition.left
+                                      }}
+                                    >
+                                      {statuses.map((nextStatus) => (
+                                        <button
+                                          aria-current={nextStatus === report.status ? "true" : undefined}
+                                          className="status-menu-item"
+                                          key={nextStatus}
+                                          role="menuitem"
+                                          type="button"
+                                          onClick={() => handleListStatusChange(report, nextStatus)}
+                                        >
+                                          <span className={statusClass(nextStatus)}>
+                                            {statusLabels[nextStatus]}
+                                          </span>
+                                        </button>
+                                      ))}
+                                    </div>,
+                                    document.body
+                                  )
+                                : null}
+                            </div>
+                            <button
+                              className="report-list-item-select"
+                              type="button"
+                              onClick={() => selectReport(report.id)}
+                            >
+                              <span className="report-list-title">{displayReportTitle(report)}</span>
+                            </button>
+                          </div>
                           <div className={`report-list-menu-wrap${openReportMenuId === report.id ? " report-list-menu-open" : ""}`}>
                             <button
                               aria-label="メニュー"
@@ -2061,13 +2224,24 @@ function ReportDetail({
                     onChange={(event) => setDescription(event.target.value)}
                   />
                 ) : (
-                  <button
+                  <div
                     className="detail-editable detail-editable-text"
-                    type="button"
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={(event) => {
+                      if (event.currentTarget !== event.target) {
+                        return;
+                      }
+
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        setEditingField("description");
+                      }
+                    }}
                     onClick={() => setEditingField("description")}
                   >
-                    {description || "コメントなし"}
-                  </button>
+                    {description ? renderLinkedText(description, "detail-link") : "コメントなし"}
+                  </div>
                 )}
               </div>
               {report.attachment_paths?.length > 0 && (
@@ -2252,7 +2426,7 @@ function ReportDetail({
                           </div>
                         </div>
                       ) : (
-                        <p>{comment.body}</p>
+                        <p>{renderLinkedText(comment.body, "thread-link")}</p>
                       )}
                     </div>
                   </article>

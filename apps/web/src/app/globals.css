@@ -608,7 +608,7 @@ h1 {
 .mail-list-pane {
   position: relative;
   z-index: 20;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .mail-detail-pane {
@@ -625,13 +625,12 @@ h1 {
   border-radius: 0;
 }
 
-.mail-split .table-wrap,
-.mail-split .report-list-panel {
-  overflow: hidden;
-}
-
 .mail-split .table-wrap {
   overflow: auto;
+}
+
+.mail-split .report-list-panel {
+  overflow: visible;
 }
 
 .mail-split .panel {
@@ -889,6 +888,13 @@ h1 {
   outline: none;
 }
 
+.report-filter-menu-item-separated {
+  margin-top: 4px;
+  border-top: 1px solid var(--hairline);
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+}
+
 .report-filter-menu-item > .status-dot {
   flex-shrink: 0;
 }
@@ -955,18 +961,41 @@ h1 {
   background: var(--surface-current);
 }
 
-.report-list-item-select {
+.report-list-item-content {
   display: grid;
   flex: 1;
   min-width: 0;
-  grid-template-columns: 4px minmax(0, 1fr);
-  gap: 10px;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 8px;
   align-items: center;
   padding: 12px;
+}
+
+.report-list-item-select {
+  min-width: 0;
+  padding: 0;
   color: var(--ink);
   text-align: left;
   background: transparent;
   border: 0;
+}
+
+.report-list-status-menu-wrap {
+  position: relative;
+  display: inline-flex;
+  min-width: 0;
+}
+
+.report-list-status-button {
+  min-height: 22px;
+  padding: 2px 8px;
+  white-space: nowrap;
+}
+
+.report-list-status-button:hover,
+.report-list-status-button:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px rgb(0 122 255 / 20%);
 }
 
 .report-list-menu-wrap {
@@ -1033,6 +1062,7 @@ h1 {
 }
 
 .report-list-title {
+  display: block;
   overflow: hidden;
   font-size: 14px;
   font-weight: 500;
@@ -1720,6 +1750,12 @@ h1 {
   font-size: 13px;
   line-height: 1.55;
   white-space: pre-wrap;
+}
+
+.thread-link {
+  color: var(--charcoal);
+  text-decoration: underline;
+  text-underline-offset: 3px;
 }
 
 .thread-edit {
