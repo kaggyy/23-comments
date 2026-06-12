@@ -12,11 +12,18 @@ type OpenAnnotatorPayload = {
   screenshotDataUrl: string;
   projects: StoredProject[];
   selectedProject: StoredProject;
+  members: Member[];
   tab: {
     id: number;
     title: string;
     url: string;
   };
+};
+
+type Member = {
+  id: string;
+  displayName: string;
+  email: string | null;
 };
 
 type CaptureTarget = {
@@ -32,6 +39,7 @@ type SubmitPayload = {
   annotatedScreenshotDataUrl: string;
   annotations: unknown[];
   attachmentDataUrls?: string[];
+  assigneeIds?: string[];
   viewport: {
     width: number;
     height: number;
@@ -111,6 +119,7 @@ async function startCapture() {
       screenshotDataUrl,
       projects: captureContext.projects,
       selectedProject: captureContext.selectedProject,
+      members: captureContext.members,
       tab: {
         id: tab.id,
         title: tab.title ?? "",
@@ -199,8 +208,50 @@ async function getCaptureContext(settings: ExtensionSettings) {
 
   return {
     projects,
-    selectedProject
+    selectedProject,
+    members: await loadMembers(supabase, organizationId)
   };
+}
+
+async function loadMembers(
+  supabase: Awaited<ReturnType<typeof createAuthenticatedSupabase>>,
+  organizationId: string
+) {
+  const { data: membershipsData, error: membershipsError } = await supabase
+    .from("memberships")
+    .select("user_id")
+    .eq("organization_id", organizationId);
+
+  if (membershipsError) {
+    throw membershipsError;
+  }
+
+  const memberIds = (membershipsData ?? [])
+    .map((membership) => membership.user_id)
+    .filter(Boolean);
+
+  if (!memberIds.length) {
+    return [];
+  }
+
+  const { data: profilesData, error: profilesError } = await supabase
+    .from("profiles")
+    .select("id, display_name, email")
+    .in("id", memberIds);
+
+  if (profilesError) {
+    throw profilesError;
+  }
+
+  return memberIds.map((memberId) => {
+    const profile = profilesData?.find((nextProfile) => nextProfile.id === memberId);
+
+    return {
+      id: memberId,
+      displayName: profile?.display_name ?? "",
+      email: profile?.email ?? null
+    };
+  });
 }
 
 async function getCaptureTarget(tab: chrome.tabs.Tab): Promise<CaptureTarget> {
@@ -338,6 +389,7 @@ async function submitReport(payload: SubmitPayload) {
         annotated_screenshot_path: annotatedPath,
         annotations: parsed.annotations,
         attachment_paths: attachmentPaths,
+        assignee_ids: parsed.assigneeIds,
         viewport_width: parsed.viewport.width,
         viewport_height: parsed.viewport.height,
         device_pixel_ratio: parsed.viewport.devicePixelRatio,

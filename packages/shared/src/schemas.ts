@@ -42,7 +42,8 @@ export const reportCreateSchema = z.object({
     devicePixelRatio: z.number().positive()
   }),
   userAgent: z.string().max(1000),
-  attachmentDataUrls: z.array(z.string().startsWith("data:image/")).max(5).optional().default([])
+  attachmentDataUrls: z.array(z.string().startsWith("data:image/")).max(5).optional().default([]),
+  assigneeIds: z.array(z.string().uuid()).max(1).optional().default([])
 });
 
 export type ReportCreateInput = z.infer<typeof reportCreateSchema>;

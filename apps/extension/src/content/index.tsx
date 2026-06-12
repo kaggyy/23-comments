@@ -9,10 +9,17 @@ type StoredProject = {
   name: string;
 };
 
+type Member = {
+  id: string;
+  displayName: string;
+  email: string | null;
+};
+
 type OpenAnnotatorPayload = {
   screenshotDataUrl: string;
   projects: StoredProject[];
   selectedProject: StoredProject;
+  members: Member[];
   tab: {
     id: number;
     title: string;
@@ -33,6 +40,10 @@ type BasicResponse = {
 
 function displayProjectName(name: string) {
   return name === "Website feedback" ? "Webサイトフィードバック" : name;
+}
+
+function displayMemberName(member: Member) {
+  return member.displayName.trim() || member.email || member.id.slice(0, 8);
 }
 
 type RuntimeMessage = {
@@ -102,9 +113,11 @@ function Annotator({
   const [busy, setBusy] = useState(false);
   const [imageReady, setImageReady] = useState(false);
   const [projects] = useState<StoredProject[]>(payload.projects);
+  const [members] = useState<Member[]>(payload.members);
   const [selectedProjectId, setSelectedProjectId] = useState(
     payload.selectedProject.id
   );
+  const [selectedAssigneeId, setSelectedAssigneeId] = useState("");
 
   useEffect(() => {
     function syncCanvasSize() {
@@ -288,6 +301,7 @@ function Annotator({
           annotatedScreenshotDataUrl,
           annotations,
           attachmentDataUrls: attachments.map((a) => a.dataUrl),
+          assigneeIds: selectedAssigneeId ? [selectedAssigneeId] : [],
           viewport: {
             width: window.innerWidth,
             height: window.innerHeight,
@@ -433,6 +447,22 @@ function Annotator({
             {projects.map((project) => (
               <option key={project.id} value={project.id}>
                 {displayProjectName(project.name)}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label>
+          担当者
+          <select
+            className="select"
+            value={selectedAssigneeId}
+            onChange={(event) => setSelectedAssigneeId(event.target.value)}
+          >
+            <option value="">未選択</option>
+            {members.map((member) => (
+              <option key={member.id} value={member.id}>
+                {displayMemberName(member)}
               </option>
             ))}
           </select>
