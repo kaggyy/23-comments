@@ -230,6 +230,20 @@ function normalizeUrlForGrouping(url: string): string {
   }
 }
 
+function displayUrlForGroup(url: string): string {
+  try {
+    const parsed = new URL(url);
+
+    if (parsed.pathname === "/recruit" || parsed.pathname.startsWith("/recruit/")) {
+      return `${parsed.pathname}${parsed.search}${parsed.hash}`;
+    }
+  } catch {
+    return url;
+  }
+
+  return url;
+}
+
 function isRectAnnotation(annotation: unknown): annotation is RectAnnotation {
   if (!annotation || typeof annotation !== "object") {
     return false;
@@ -343,6 +357,7 @@ export function Dashboard() {
   const reportStatusMenuRef = useRef<HTMLDivElement | null>(null);
   const [isProjectSelectMenuOpen, setIsProjectSelectMenuOpen] = useState(false);
   const [isProjectMenuOpen, setIsProjectMenuOpen] = useState(false);
+  const [projectMenuPosition, setProjectMenuPosition] = useState<{ top: number; left: number } | null>(null);
   const [isStatusFilterMenuOpen, setIsStatusFilterMenuOpen] = useState(false);
   const [visibleStatuses, setVisibleStatuses] = useState<ReportStatus[]>([
     ...DEFAULT_VISIBLE_STATUSES
@@ -475,9 +490,11 @@ export function Dashboard() {
       if (
         isProjectMenuOpen &&
         projectMenuRef.current &&
-        !projectMenuRef.current.contains(target)
+        !projectMenuRef.current.contains(target) &&
+        !target.closest(".project-menu")
       ) {
         setIsProjectMenuOpen(false);
+        setProjectMenuPosition(null);
       }
 
       if (
@@ -501,6 +518,7 @@ export function Dashboard() {
       if (event.key === "Escape") {
         setIsProjectSelectMenuOpen(false);
         setIsProjectMenuOpen(false);
+        setProjectMenuPosition(null);
         setIsStatusFilterMenuOpen(false);
         setIsAccountMenuOpen(false);
       }
@@ -908,6 +926,25 @@ export function Dashboard() {
     }
   }
 
+  async function handleCopyReportLink(report: Report) {
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("reportId", report.id);
+    const url = `${getPublicAppUrl().replace(/\/$/, "")}${pathname}?${params.toString()}`;
+
+    setOpenReportMenuId(null);
+    setReportMenuPosition(null);
+
+    try {
+      if (!navigator.clipboard) {
+        throw new Error("Clipboard API is unavailable.");
+      }
+      await navigator.clipboard.writeText(url);
+      showToast("リンクをコピーしました。");
+    } catch {
+      showToast("リンクをコピーできませんでした。", "error");
+    }
+  }
+
   async function handleCreateProject(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
@@ -1209,21 +1246,42 @@ export function Dashboard() {
                       aria-label="プロジェクト設定"
                       className="project-menu-button"
                       type="button"
-                      onClick={() => {
+                      onClick={(event) => {
                         setIsProjectSelectMenuOpen(false);
-                        setIsProjectMenuOpen((isOpen) => !isOpen);
+                        const rect = event.currentTarget.getBoundingClientRect();
+                        setIsProjectMenuOpen((isOpen) => {
+                          if (isOpen) {
+                            setProjectMenuPosition(null);
+                            return false;
+                          }
+
+                          setProjectMenuPosition({
+                            top: rect.bottom + 8,
+                            left: rect.left
+                          });
+                          return true;
+                        });
                       }}
                     >
                       <MoreHorizontal size={18} />
                     </button>
-                    {isProjectMenuOpen ? (
-                      <div className="project-menu" role="menu">
+                    {isProjectMenuOpen && projectMenuPosition ? createPortal(
+                      <div
+                        className="project-menu"
+                        role="menu"
+                        style={{
+                          position: "fixed",
+                          top: projectMenuPosition.top,
+                          left: projectMenuPosition.left
+                        }}
+                      >
                         <button
                           className="project-menu-item"
                           role="menuitem"
                           type="button"
                           onClick={() => {
                             setIsProjectMenuOpen(false);
+                            setProjectMenuPosition(null);
                             setIsProjectModalOpen(true);
                           }}
                         >
@@ -1240,6 +1298,7 @@ export function Dashboard() {
                             }
 
                             setIsProjectMenuOpen(false);
+                            setProjectMenuPosition(null);
                             setProjectToDelete(selectedProject);
                           }}
                         >
@@ -1251,13 +1310,15 @@ export function Dashboard() {
                           type="button"
                           onClick={() => {
                             setIsProjectMenuOpen(false);
+                            setProjectMenuPosition(null);
                             void loadMembers();
                             setIsInviteModalOpen(true);
                           }}
                         >
                           共有
                         </button>
-                      </div>
+                      </div>,
+                      document.body
                     ) : null}
                   </div>
                 </div>
@@ -1335,7 +1396,7 @@ export function Dashboard() {
                       target="_blank"
                       title={group.url}
                     >
-                      {group.url}
+                      {displayUrlForGroup(group.url)}
                     </a>
                     <div className="report-list-group-items" role="list">
                       {group.reports.map((report) => (
@@ -1445,6 +1506,17 @@ export function Dashboard() {
                                     role="menu"
                                     style={{ position: "fixed", top: reportMenuPosition.top, right: reportMenuPosition.right }}
                                   >
+                                    <button
+                                      className="report-list-menu-item"
+                                      role="menuitem"
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        void handleCopyReportLink(report);
+                                      }}
+                                    >
+                                      リンクをコピー
+                                    </button>
                                     <button
                                       className="report-list-menu-item report-list-menu-item-danger"
                                       role="menuitem"

@@ -608,7 +608,7 @@ h1 {
 .mail-list-pane {
   position: relative;
   z-index: 20;
-  overflow: visible;
+  overflow: hidden;
 }
 
 .mail-detail-pane {
@@ -625,12 +625,13 @@ h1 {
   border-radius: 0;
 }
 
-.mail-split .table-wrap {
-  overflow: auto;
+.mail-split .table-wrap,
+.mail-split .report-list-panel {
+  overflow: hidden;
 }
 
-.mail-split .report-list-panel {
-  overflow: visible;
+.mail-split .table-wrap {
+  overflow: auto;
 }
 
 .mail-split .panel {
@@ -1032,7 +1033,7 @@ h1 {
   right: 0;
   top: calc(100% + 4px);
   z-index: 100;
-  min-width: 80px;
+  min-width: 112px;
   background: var(--canvas);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
