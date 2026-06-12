@@ -10,6 +10,7 @@
   --canvas: #ffffff;
   --surface: #f6f5f4;
   --surface-soft: #fafaf9;
+  --surface-current: #f0eeec;
   --hairline: #e5e3df;
   --hairline-soft: #ede9e4;
   --hairline-strong: #c8c4be;
@@ -233,9 +234,13 @@ a {
 }
 
 .project-menu-item:hover,
-.project-menu-item:focus-visible,
-.project-menu-item-active {
+.project-menu-item:focus-visible {
   background: var(--surface-soft);
+  outline: none;
+}
+
+.project-menu-item-active {
+  background: var(--surface-current);
   outline: none;
 }
 
@@ -996,11 +1001,11 @@ h1 {
 }
 
 .report-list-item-selected {
-  background: var(--surface-soft);
+  background: var(--surface-current);
 }
 
 .report-list-item-selected:hover {
-  background: var(--surface-soft);
+  background: var(--surface-current);
 }
 
 .report-list-item-select {
@@ -1304,9 +1309,13 @@ h1 {
 .status-menu-item:hover,
 .status-menu-item:focus-visible,
 .assignee-menu-item:hover,
-.assignee-menu-item:focus-visible,
-.assignee-menu-item-active {
+.assignee-menu-item:focus-visible {
   background: var(--surface-soft);
+  outline: none;
+}
+
+.assignee-menu-item-active {
+  background: var(--surface-current);
   outline: none;
 }
 
