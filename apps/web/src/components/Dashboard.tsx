@@ -8,6 +8,7 @@ import type {
   ReactNode
 } from "react";
 import type { User } from "@supabase/supabase-js";
+import Link from "next/link";
 import {
   Check,
   ChevronDown,
@@ -60,6 +61,12 @@ type Member = Profile & {
   role: MemberRole;
 };
 
+type ProjectMembership = {
+  organization_id: string;
+  project_id: string;
+  user_id: string;
+};
+
 type Report = {
   id: string;
   organization_id: string;
@@ -110,7 +117,7 @@ const SPLIT_MIN_PERCENT = 22;
 const SPLIT_MAX_PERCENT = 45;
 const MENU_EDGE_PADDING = 8;
 const PROJECT_MENU_WIDTH = 168;
-const PROJECT_MENU_HEIGHT = 124;
+const PROJECT_MENU_HEIGHT = 88;
 const REPORT_STATUS_MENU_WIDTH = 132;
 const REPORT_STATUS_MENU_HEIGHT = 144;
 const REPORT_LIST_MENU_WIDTH = 112;
@@ -120,8 +127,8 @@ const RECENT_ASSIGNEE_STORAGE_KEY = "recentAssigneeIds";
 const COMMENT_LINK_PATTERN = /(https?:\/\/[^\s<>()]+|www\.[^\s<>()]+)/gi;
 const COMMENT_LINK_TRAILING_PUNCTUATION = /[.,!?;:。！？、)）]+$/;
 const roleLabels: Record<MemberRole, string> = {
-  owner: "管理者",
-  member: "メンバー"
+  owner: "編集",
+  member: "閲覧"
 };
 
 function clampMenuPosition(value: number, min: number, max: number) {
@@ -438,6 +445,7 @@ export function Dashboard() {
   const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
   const [isInviteFormModalOpen, setIsInviteFormModalOpen] = useState(false);
   const [members, setMembers] = useState<Member[]>([]);
+  const [projectMemberships, setProjectMemberships] = useState<ProjectMembership[]>([]);
   const [openMemberMenuId, setOpenMemberMenuId] = useState<string | null>(null);
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteDisplayName, setInviteDisplayName] = useState("");
@@ -553,6 +561,23 @@ export function Dashboard() {
   );
   const accountLabel = displayName.trim() || accountEmail || user?.email || (user ? shortId(user.id) : "");
   const isOwner = ownRole === "owner";
+  const selectedReportMembers = useMemo(() => {
+    if (!selectedReport) {
+      return members;
+    }
+
+    const projectMemberIds = new Set(
+      projectMemberships
+        .filter((membership) => membership.project_id === selectedReport.project_id)
+        .map((membership) => membership.user_id)
+    );
+
+    if (!projectMemberIds.size) {
+      return members;
+    }
+
+    return members.filter((member) => projectMemberIds.has(member.id));
+  }, [members, projectMemberships, selectedReport]);
 
   function showToast(messageText: string, tone: ToastTone = "default") {
     setToast({
@@ -902,6 +927,25 @@ export function Dashboard() {
     );
   }
 
+  async function loadProjectMemberships(organizationId = organization?.id) {
+    if (!organizationId) {
+      return;
+    }
+
+    const supabase = getSupabaseClient();
+    const { data, error } = await supabase
+      .from("project_memberships")
+      .select("organization_id, project_id, user_id")
+      .eq("organization_id", organizationId);
+
+    if (error) {
+      setProjectMemberships([]);
+      return;
+    }
+
+    setProjectMemberships((data ?? []) as ProjectMembership[]);
+  }
+
   async function loadOwnProfile(currentUser: User) {
     const supabase = getSupabaseClient();
     const fallbackName =
@@ -1048,6 +1092,7 @@ export function Dashboard() {
       current === "all" || nextProjects.some((p) => p.id === current) ? current : "all"
     );
     await loadMembers(organizationId);
+    await loadProjectMemberships(organizationId);
     await loadReports(organizationId);
     setState("ready");
   }
@@ -1216,6 +1261,9 @@ export function Dashboard() {
     }
 
     setMembers((currentMembers) => currentMembers.filter((member) => member.id !== memberId));
+    setProjectMemberships((currentMemberships) =>
+      currentMemberships.filter((membership) => membership.user_id !== memberId)
+    );
     setReports((currentReports) =>
       currentReports.map((report) => ({
         ...report,
@@ -1251,15 +1299,35 @@ export function Dashboard() {
     }
 
     const supabase = getSupabaseClient();
-    const { error } = await supabase.from("projects").insert({
-      organization_id: organization.id,
-      name: newProjectName.trim(),
-      created_by: user.id
-    });
+    const { data, error } = await supabase
+      .from("projects")
+      .insert({
+        organization_id: organization.id,
+        name: newProjectName.trim(),
+        created_by: user.id
+      })
+      .select("id")
+      .single();
 
     if (error) {
       showToast(error.message, "error");
       return;
+    }
+
+    const projectId = (data as { id: string } | null)?.id;
+    if (projectId && members.length) {
+      const { error: membershipError } = await supabase.from("project_memberships").insert(
+        members.map((member) => ({
+          organization_id: organization.id,
+          project_id: projectId,
+          user_id: member.id
+        }))
+      );
+
+      if (membershipError) {
+        showToast(membershipError.message, "error");
+        return;
+      }
     }
 
     setNewProjectName("");
@@ -1485,12 +1553,21 @@ export function Dashboard() {
           <div className="mail-list-pane">
             <div className="report-list-panel">
               <div className="panel-nav">
-                <div className="brand">
-                  <span className="brand-mark" aria-hidden="true">
-                    <img alt="" src="/icon.svg" />
-                  </span>
-                  <span>23 comments</span>
-                </div>
+                {isOwner ? (
+                  <Link className="brand" href="/admin">
+                    <span className="brand-mark" aria-hidden="true">
+                      <img alt="" src="/icon.svg" />
+                    </span>
+                    <span>23 comments</span>
+                  </Link>
+                ) : (
+                  <div className="brand">
+                    <span className="brand-mark" aria-hidden="true">
+                      <img alt="" src="/icon.svg" />
+                    </span>
+                    <span>23 comments</span>
+                  </div>
+                )}
                 <div className="project-switcher">
                   <div className="project-select-menu-wrap" ref={projectSelectMenuRef}>
                     <button
@@ -1573,18 +1650,6 @@ export function Dashboard() {
                           }}
                         >
                           <button
-                            className="project-menu-item"
-                            role="menuitem"
-                            type="button"
-                            onClick={() => {
-                              setIsProjectMenuOpen(false);
-                              setProjectMenuPosition(null);
-                              setIsProjectModalOpen(true);
-                            }}
-                          >
-                            プロジェクト作成
-                          </button>
-                          <button
                             className="project-menu-item project-menu-item-danger"
                             disabled={!selectedProject}
                             role="menuitem"
@@ -1608,8 +1673,7 @@ export function Dashboard() {
                             onClick={() => {
                               setIsProjectMenuOpen(false);
                               setProjectMenuPosition(null);
-                              void loadMembers();
-                              setIsInviteModalOpen(true);
+                              router.push("/admin");
                             }}
                           >
                             メンバー管理
@@ -1923,7 +1987,7 @@ export function Dashboard() {
               getAssetUrl={getAssetUrl}
               getUserName={(userId) => displayUserName(userId, profilesById)}
               loadProfilesForUsers={loadProfilesForUsers}
-              members={members}
+              members={selectedReportMembers}
               canManage={isOwner}
               currentUserId={user?.id ?? null}
               onChanged={() => loadReports()}
@@ -2024,7 +2088,7 @@ export function Dashboard() {
                                     void handleChangeMemberRole(member.id, "owner");
                                   }}
                                 >
-                                  管理者
+                                  編集
                                 </button>
                                 <button
                                   className={
@@ -2039,7 +2103,7 @@ export function Dashboard() {
                                     void handleChangeMemberRole(member.id, "member");
                                   }}
                                 >
-                                  メンバー
+                                  閲覧
                                 </button>
                                 <button
                                   className="member-role-menu-item member-role-menu-item-danger"
@@ -2156,7 +2220,7 @@ export function Dashboard() {
                           setIsInviteRoleMenuOpen(false);
                         }}
                       >
-                        メンバー
+                        閲覧
                       </button>
                       <button
                         className={
@@ -2171,7 +2235,7 @@ export function Dashboard() {
                           setIsInviteRoleMenuOpen(false);
                         }}
                       >
-                        管理者
+                        編集
                       </button>
                     </div>
                   ) : null}

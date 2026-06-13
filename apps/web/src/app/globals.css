@@ -116,8 +116,10 @@ a {
   flex: 0 0 auto;
   align-items: center;
   gap: 12px;
+  color: inherit;
   font-size: 16px;
   font-weight: 600;
+  text-decoration: none;
 }
 
 .brand-mark {
@@ -235,12 +237,12 @@ a {
 
 .project-menu-item:hover,
 .project-menu-item:focus-visible {
-  background: var(--surface-soft);
+  background: #f4f4f4;
   outline: none;
 }
 
 .project-menu-item-active {
-  background: var(--surface-current);
+  background: #f4f4f4;
   outline: none;
 }
 
@@ -324,6 +326,171 @@ a {
   min-height: 100vh;
   margin: 0;
   padding: 0;
+}
+
+.admin-shell {
+  display: grid;
+  min-height: 100vh;
+  grid-template-columns: 220px minmax(0, 1fr);
+  background: var(--canvas);
+}
+
+.admin-sidebar {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 22px;
+  padding: 18px 14px;
+  border-right: 1px solid var(--hairline);
+}
+
+.admin-nav {
+  display: grid;
+  align-content: start;
+  gap: 4px;
+}
+
+.admin-nav-item {
+  min-height: 36px;
+  padding: 8px 10px;
+  color: var(--charcoal);
+  text-align: left;
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-md);
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.admin-nav-item:hover,
+.admin-nav-item:focus-visible,
+.admin-nav-item-active {
+  background: #f4f4f4;
+  outline: none;
+}
+
+.admin-main {
+  min-width: 0;
+  padding: 28px 32px;
+}
+
+.admin-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.admin-header h1 {
+  font-size: 26px;
+}
+
+.admin-project-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 14px;
+}
+
+.admin-project-card {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  min-height: 112px;
+  padding: 14px;
+  background: var(--canvas);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  outline: none;
+}
+
+.admin-project-card:hover,
+.admin-project-card:focus-visible {
+  background: #f4f4f4;
+}
+
+.admin-project-card-main {
+  display: grid;
+  min-width: 0;
+  align-content: space-between;
+  gap: 18px;
+}
+
+.admin-project-card h2 {
+  margin: 0;
+  overflow: hidden;
+  color: var(--ink);
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin-project-status-tag {
+  display: inline-flex;
+  width: max-content;
+  max-width: 100%;
+  align-items: center;
+  min-height: 24px;
+  padding: 3px 8px;
+  color: var(--steel);
+  background: var(--surface-soft);
+  border: 1px solid var(--hairline);
+  border-radius: 9999px;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.admin-project-menu-wrap {
+  position: relative;
+}
+
+.admin-project-menu {
+  right: 0;
+  left: auto;
+}
+
+.admin-table-wrap {
+  min-width: 0;
+  overflow: auto;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-md);
+}
+
+.admin-member-table th:last-child,
+.admin-member-table td:last-child {
+  width: 120px;
+}
+
+.admin-member-check-list {
+  display: grid;
+  overflow: auto;
+  max-height: min(360px, 52vh);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-md);
+}
+
+.admin-member-check {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+  min-height: 42px;
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--hairline-soft);
+  font-size: 14px;
+}
+
+.admin-member-check:last-child {
+  border-bottom: 0;
+}
+
+.admin-member-check span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .hero-strip {
@@ -2114,6 +2281,34 @@ h1 {
 
   .page {
     width: 100%;
+  }
+
+  .admin-shell {
+    display: block;
+  }
+
+  .admin-sidebar {
+    display: grid;
+    gap: 12px;
+    padding: 14px;
+    border-right: 0;
+    border-bottom: 1px solid var(--hairline);
+  }
+
+  .admin-nav {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .admin-main {
+    padding: 20px 16px;
+  }
+
+  .admin-header {
+    margin-bottom: 18px;
+  }
+
+  .admin-project-grid {
+    grid-template-columns: 1fr;
   }
 
   .hero-strip,
