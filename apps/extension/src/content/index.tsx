@@ -1,5 +1,5 @@
 import type { RectAnnotation } from "@comment-tool/shared";
-import { Image as ImageIcon, LogOut, Send, Trash2, Undo2, X } from "lucide-react";
+import { Image as ImageIcon, LogOut, Redo2, Send, Undo2, X } from "lucide-react";
 import { PointerEvent, useEffect, useRef, useState, useCallback, ClipboardEvent } from "react";
 import { createRoot, type Root } from "react-dom/client";
 
@@ -112,6 +112,7 @@ function Annotator({
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
   const [imageReady, setImageReady] = useState(false);
+  const [undoneAnnotations, setUndoneAnnotations] = useState<RectAnnotation[]>([]);
   const [projects] = useState<StoredProject[]>(payload.projects);
   const [members] = useState<Member[]>(payload.members);
   const [selectedProjectId, setSelectedProjectId] = useState(
@@ -243,10 +244,37 @@ function Annotator({
 
     if (draft && draft.width > 8 && draft.height > 8) {
       setAnnotations((current) => [...current, draft]);
+      setUndoneAnnotations([]);
     }
 
     setDraft(null);
     setStartPoint(null);
+  }
+
+  function handleUndo() {
+    setAnnotations((current) => {
+      const previous = current.at(-1);
+
+      if (!previous) {
+        return current;
+      }
+
+      setUndoneAnnotations((undone) => [...undone, previous]);
+      return current.slice(0, -1);
+    });
+  }
+
+  function handleRedo() {
+    setUndoneAnnotations((current) => {
+      const next = current.at(-1);
+
+      if (!next) {
+        return current;
+      }
+
+      setAnnotations((annotations) => [...annotations, next]);
+      return current.slice(0, -1);
+    });
   }
 
   const addFilesAsAttachments = useCallback(async (files: FileList | File[]) => {
@@ -394,19 +422,21 @@ function Annotator({
           <div className="toolbar-actions">
             <button
               className="icon-button"
-              title="元に戻す"
+              title="戻る"
               type="button"
-              onClick={() => setAnnotations((current) => current.slice(0, -1))}
+              disabled={annotations.length === 0}
+              onClick={handleUndo}
             >
               <Undo2 size={16} />
             </button>
             <button
               className="icon-button"
-              title="削除"
+              title="進む"
               type="button"
-              onClick={() => setAnnotations([])}
+              disabled={undoneAnnotations.length === 0}
+              onClick={handleRedo}
             >
-              <Trash2 size={16} />
+              <Redo2 size={16} />
             </button>
           </div>
         </div>
@@ -454,22 +484,6 @@ function Annotator({
         </label>
 
         <label>
-          担当者
-          <select
-            className="select"
-            value={selectedAssigneeId}
-            onChange={(event) => setSelectedAssigneeId(event.target.value)}
-          >
-            <option value="">未選択</option>
-            {members.map((member) => (
-              <option key={member.id} value={member.id}>
-                {displayMemberName(member)}
-              </option>
-            ))}
-          </select>
-        </label>
-
-        <label>
           内容
           <div className="textarea-wrap">
             <textarea
@@ -501,6 +515,22 @@ function Annotator({
               }}
             />
           </div>
+        </label>
+
+        <label>
+          担当者
+          <select
+            className="select"
+            value={selectedAssigneeId}
+            onChange={(event) => setSelectedAssigneeId(event.target.value)}
+          >
+            <option value="">未選択</option>
+            {members.map((member) => (
+              <option key={member.id} value={member.id}>
+                {displayMemberName(member)}
+              </option>
+            ))}
+          </select>
         </label>
 
         {attachments.length > 0 && (
@@ -590,7 +620,7 @@ const overlayStyles = `
   .stage-toolbar {
     display: flex;
     align-items: center;
-    justify-content: flex-end;
+    justify-content: flex-start;
     margin-bottom: 12px;
   }
 
@@ -719,6 +749,7 @@ const overlayStyles = `
   .attachment-list {
     display: flex;
     flex-wrap: wrap;
+    justify-content: flex-end;
     gap: 8px;
     margin-top: -4px;
   }

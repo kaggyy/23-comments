@@ -128,6 +128,13 @@ function clampMenuPosition(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), Math.max(min, max));
 }
 
+function isDefaultVisibleStatuses(visibleStatuses: ReportStatus[]) {
+  return (
+    visibleStatuses.length === DEFAULT_VISIBLE_STATUSES.length &&
+    DEFAULT_VISIBLE_STATUSES.every((status) => visibleStatuses.includes(status))
+  );
+}
+
 function getFixedMenuLeft(anchorLeft: number, menuWidth: number) {
   if (typeof window === "undefined") return anchorLeft;
 
@@ -1605,7 +1612,7 @@ export function Dashboard() {
                               setIsInviteModalOpen(true);
                             }}
                           >
-                            共有
+                            メンバー管理
                           </button>
                         </div>,
                         document.body
@@ -1629,7 +1636,7 @@ export function Dashboard() {
                       aria-haspopup="menu"
                       aria-label="ステータスフィルター"
                       className={
-                        visibleStatuses.length < statuses.length || isAssignedToMeOnly
+                        !isDefaultVisibleStatuses(visibleStatuses) || isAssignedToMeOnly
                           ? "report-filter-button report-filter-button-active"
                           : "report-filter-button"
                       }
@@ -1944,7 +1951,7 @@ export function Dashboard() {
           >
             <div className="modal-header">
               <div>
-                <h2 id="invite-dialog-title">共有</h2>
+                <h2 id="invite-dialog-title">メンバー管理</h2>
               </div>
               <div className="modal-header-actions">
                 <button

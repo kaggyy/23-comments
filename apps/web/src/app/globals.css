@@ -895,13 +895,21 @@ h1 {
 }
 
 .panel-nav .project-switcher {
-  flex: 1 0 158px;
-  justify-content: flex-start;
+  flex: 1 1 0;
   margin-left: auto;
+}
+
+.panel-nav .project-select-menu-wrap {
+  flex: 0 1 auto;
+  max-width: calc(100% - 36px);
 }
 
 .panel-nav .project-select-button {
   max-width: 100%;
+}
+
+.panel-nav .project-menu-wrap {
+  margin-left: auto;
 }
 
 .panel-account {
@@ -1709,7 +1717,8 @@ h1 {
 
 .report-attachments {
   display: flex;
-  flex-direction: column;
+  flex-wrap: wrap;
+  justify-content: flex-end;
   gap: 6px;
   flex-shrink: 0;
 }
