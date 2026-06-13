@@ -1,6 +1,6 @@
 "use client";
 
-import type { FormEvent } from "react";
+import type { FormEvent, KeyboardEvent as ReactKeyboardEvent } from "react";
 import type { User } from "@supabase/supabase-js";
 import { ChevronDown, MoreHorizontal, Plus, Trash2, X } from "lucide-react";
 import Link from "next/link";
@@ -29,11 +29,15 @@ type Profile = {
   id: string;
   display_name: string;
   email: string | null;
+  login_id?: string;
+  login_password?: string;
 };
 
 type MemberRole = "owner" | "member";
 
-type Member = Profile & {
+type Member = Omit<Profile, "login_id" | "login_password"> & {
+  login_id: string;
+  login_password: string;
   role: MemberRole;
 };
 
@@ -60,6 +64,12 @@ type ToastState = {
   tone: ToastTone;
 };
 
+type EditableMemberField = "display_name" | "email" | "login_id" | "login_password" | "role";
+type EditingMemberCell = {
+  memberId: string;
+  field: EditableMemberField;
+} | null;
+
 const roleLabels: Record<MemberRole, string> = {
   owner: "編集",
   member: "閲覧"
@@ -71,6 +81,10 @@ function displayProjectName(name: string | null | undefined) {
 
 function displayMemberName(member: Member) {
   return member.display_name.trim() || member.email || shortId(member.id);
+}
+
+function displayMemberLoginId(member: Member) {
+  return member.login_id.trim() || member.display_name.trim() || shortId(member.id);
 }
 
 function createDefaultProjectMemberships(projects: Project[], memberIds: string[]) {
@@ -107,6 +121,9 @@ export function AdminDashboard() {
   const [invitePassword, setInvitePassword] = useState("");
   const [inviteRole, setInviteRole] = useState<MemberRole>("member");
   const [isInviteRoleMenuOpen, setIsInviteRoleMenuOpen] = useState(false);
+  const [editingMemberCell, setEditingMemberCell] = useState<EditingMemberCell>(null);
+  const [editingMemberValue, setEditingMemberValue] = useState("");
+  const [savingMemberId, setSavingMemberId] = useState<string | null>(null);
   const [toast, setToast] = useState<ToastState | null>(null);
   const projectMenuRef = useRef<HTMLDivElement | null>(null);
   const inviteRoleMenuRef = useRef<HTMLDivElement | null>(null);
@@ -226,12 +243,22 @@ export function AdminDashboard() {
     const nextProjectMemberships = projectMembershipsResult.error
       ? createDefaultProjectMemberships(nextProjects, memberIds)
       : ((projectMembershipsResult.data ?? []) as ProjectMembership[]);
-    const profilesResult = memberIds.length
+    let profilesResult: {
+      data: Profile[] | null;
+      error: { message: string } | null;
+    } = memberIds.length
       ? await supabase
           .from("profiles")
-          .select("id, display_name, email")
+          .select("id, display_name, email, login_id, login_password")
           .in("id", memberIds)
       : { data: [], error: null };
+
+    if (profilesResult.error?.message.includes("profiles.login_id")) {
+      profilesResult = await supabase
+        .from("profiles")
+        .select("id, display_name, email")
+        .in("id", memberIds);
+    }
 
     if (profilesResult.error) {
       setState("error");
@@ -255,8 +282,12 @@ export function AdminDashboard() {
           ...(profile ?? {
             id: memberId,
             display_name: "",
-            email: null
+            email: null,
+            login_id: "",
+            login_password: ""
           }),
+          login_id: profile?.login_id || profile?.display_name || "",
+          login_password: profile?.login_password || "",
           role: membership?.role === "owner" ? "owner" : "member"
         };
       })
@@ -501,6 +532,214 @@ export function AdminDashboard() {
     }
   }
 
+  function startEditingMember(member: Member, field: EditableMemberField) {
+    const value =
+      field === "role"
+        ? member.role
+        : field === "email"
+          ? member.email ?? ""
+          : member[field];
+
+    setEditingMemberCell({ memberId: member.id, field });
+    setEditingMemberValue(value);
+  }
+
+  function cancelEditingMember() {
+    setEditingMemberCell(null);
+    setEditingMemberValue("");
+  }
+
+  async function saveMemberCell(member: Member, field: EditableMemberField, value: string) {
+    if (!organization || savingMemberId) {
+      return;
+    }
+
+    const nextMember = {
+      ...member,
+      [field]: field === "role" ? (value as MemberRole) : value.trim()
+    };
+    const nextDisplayName = nextMember.display_name.trim();
+    const nextEmail = (nextMember.email ?? "").trim();
+    const nextLoginId = nextMember.login_id.trim();
+    const nextPassword = nextMember.login_password.trim();
+
+    if (!nextDisplayName || !nextEmail || !nextLoginId) {
+      showToast("メンバー情報が不正です。", "error");
+      cancelEditingMember();
+      return;
+    }
+
+    setSavingMemberId(member.id);
+
+    const supabase = getSupabaseClient();
+    const {
+      data: { session }
+    } = await supabase.auth.getSession();
+
+    if (!session) {
+      setSavingMemberId(null);
+      showToast("認証が必要です。", "error");
+      return;
+    }
+
+    try {
+      const response = await fetch("/api/admin/members", {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`
+        },
+        body: JSON.stringify({
+          organizationId: organization.id,
+          memberId: member.id,
+          displayName: nextDisplayName,
+          email: nextEmail,
+          loginId: nextLoginId,
+          password: nextPassword,
+          role: nextMember.role
+        })
+      });
+      const result = (await response.json().catch(() => null)) as
+        | { member?: Member; error?: string }
+        | null;
+
+      if (!response.ok || !result?.member) {
+        showToast(result?.error ?? "メンバー情報を保存できませんでした。", "error");
+        return;
+      }
+
+      setMembers((currentMembers) =>
+        currentMembers.map((currentMember) =>
+          currentMember.id === member.id ? result.member! : currentMember
+        )
+      );
+      showToast("保存しました。");
+    } catch {
+      showToast("メンバー情報を保存できませんでした。", "error");
+    } finally {
+      setSavingMemberId(null);
+      cancelEditingMember();
+    }
+  }
+
+  function handleMemberEditKeyDown(
+    event: ReactKeyboardEvent<HTMLInputElement>
+  ) {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      event.currentTarget.blur();
+    }
+
+    if (event.key === "Escape") {
+      cancelEditingMember();
+    }
+  }
+
+  function renderEditableMemberCell(member: Member, field: EditableMemberField) {
+    const isEditing =
+      editingMemberCell?.memberId === member.id && editingMemberCell.field === field;
+    const isSaving = savingMemberId === member.id;
+
+    if (field === "role") {
+      if (isEditing) {
+        return (
+          <div
+            className="admin-member-role-menu-wrap"
+            onBlur={(event) => {
+              if (!event.currentTarget.contains(event.relatedTarget)) {
+                cancelEditingMember();
+              }
+            }}
+          >
+            <button
+              autoFocus
+              aria-expanded="true"
+              aria-haspopup="menu"
+              className="member-role-button admin-member-role-button"
+              disabled={isSaving}
+              type="button"
+              onKeyDown={(event) => {
+                if (event.key === "Escape") {
+                  cancelEditingMember();
+                }
+              }}
+            >
+              <span>{roleLabels[member.role]}</span>
+              <ChevronDown size={16} />
+            </button>
+            <div className="member-role-menu admin-member-role-menu" role="menu">
+              <button
+                className={
+                  member.role === "owner"
+                    ? "member-role-menu-item member-role-menu-item-selected"
+                    : "member-role-menu-item"
+                }
+                role="menuitem"
+                type="button"
+                onClick={() => void saveMemberCell(member, field, "owner")}
+              >
+                編集
+              </button>
+              <button
+                className={
+                  member.role === "member"
+                    ? "member-role-menu-item member-role-menu-item-selected"
+                    : "member-role-menu-item"
+                }
+                role="menuitem"
+                type="button"
+                onClick={() => void saveMemberCell(member, field, "member")}
+              >
+                閲覧
+              </button>
+            </div>
+          </div>
+        );
+      }
+
+      return (
+        <button
+          className="admin-member-cell-button"
+          disabled={isSaving}
+          type="button"
+          onClick={() => startEditingMember(member, field)}
+        >
+          {roleLabels[member.role]}
+        </button>
+      );
+    }
+
+    const value = field === "email" ? member.email ?? "" : member[field];
+    const label =
+      field === "email" ? member.email || "メールアドレス未登録" : field === "login_id" ? displayMemberLoginId(member) : value;
+
+    if (isEditing) {
+      return (
+        <input
+          autoFocus
+          className="admin-member-cell-input"
+          disabled={isSaving}
+          type="text"
+          value={editingMemberValue}
+          onBlur={() => void saveMemberCell(member, field, editingMemberValue)}
+          onChange={(event) => setEditingMemberValue(event.target.value)}
+          onKeyDown={handleMemberEditKeyDown}
+        />
+      );
+    }
+
+    return (
+      <button
+        className="admin-member-cell-button"
+        disabled={isSaving}
+        type="button"
+        onClick={() => startEditingMember(member, field)}
+      >
+        {label}
+      </button>
+    );
+  }
+
   if (state === "loading") {
     return (
       <main aria-label="読み込み中" className="loading-shell">
@@ -658,15 +897,19 @@ export function AdminDashboard() {
                   <tr>
                     <th>名前</th>
                     <th>メールアドレス</th>
+                    <th>ID</th>
+                    <th>パスワード</th>
                     <th>権限</th>
                   </tr>
                 </thead>
                 <tbody>
                   {members.map((member) => (
                     <tr className="table-row" key={member.id}>
-                      <td>{displayMemberName(member)}</td>
-                      <td>{member.email || "メールアドレス未登録"}</td>
-                      <td>{roleLabels[member.role]}</td>
+                      <td>{renderEditableMemberCell(member, "display_name")}</td>
+                      <td>{renderEditableMemberCell(member, "email")}</td>
+                      <td>{renderEditableMemberCell(member, "login_id")}</td>
+                      <td>{renderEditableMemberCell(member, "login_password")}</td>
+                      <td>{renderEditableMemberCell(member, "role")}</td>
                     </tr>
                   ))}
                 </tbody>

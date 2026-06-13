@@ -9,6 +9,7 @@ export default function InvitePage() {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [displayName, setDisplayName] = useState("");
+  const [expectedLoginId, setExpectedLoginId] = useState("");
   const [loginId, setLoginId] = useState("");
   const [password, setPassword] = useState("");
   const [message, setMessage] = useState("");
@@ -65,6 +66,7 @@ export default function InvitePage() {
       const invitation = Array.isArray(data) ? data[0] : data;
       setEmail(invitation.email ?? "");
       setDisplayName(invitation.display_name ?? "");
+      setExpectedLoginId(invitation.login_id ?? invitation.display_name ?? "");
       setLoading(false);
     }
 
@@ -78,7 +80,7 @@ export default function InvitePage() {
 
     try {
       const supabase = getSupabaseClient();
-      if (loginId.trim() !== displayName) {
+      if (loginId.trim() !== expectedLoginId) {
         setMessage("IDまたはパスワードが正しくありません。");
         return;
       }
@@ -103,7 +105,9 @@ export default function InvitePage() {
         {
           id: session.user.id,
           display_name: displayName,
-          email
+          email,
+          login_id: expectedLoginId,
+          login_password: password
         },
         { onConflict: "id" }
       );

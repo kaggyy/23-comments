@@ -464,6 +464,61 @@ a {
   width: 120px;
 }
 
+.admin-member-cell-button {
+  display: block;
+  width: 100%;
+  min-height: 30px;
+  padding: 0;
+  overflow-wrap: anywhere;
+  color: inherit;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  font: inherit;
+}
+
+.admin-member-cell-button:disabled {
+  color: var(--muted);
+}
+
+.admin-member-cell-button:hover,
+.admin-member-cell-button:focus-visible {
+  color: var(--charcoal);
+  outline: none;
+}
+
+.admin-member-cell-input {
+  width: 100%;
+  min-height: 30px;
+  padding: 4px 6px;
+  color: var(--charcoal);
+  background: var(--canvas);
+  border: 1px solid var(--hairline-strong);
+  border-radius: 6px;
+  font: inherit;
+}
+
+.admin-member-cell-input:focus {
+  outline: none;
+  border-color: var(--charcoal);
+}
+
+.admin-member-role-menu-wrap {
+  position: relative;
+  display: inline-block;
+}
+
+.admin-member-role-button {
+  min-width: 92px;
+  min-height: 30px;
+  padding: 4px 8px 4px 10px;
+}
+
+.admin-member-role-menu {
+  right: auto;
+  left: 0;
+}
+
 .admin-member-check-list {
   display: grid;
   overflow: auto;
@@ -1684,12 +1739,13 @@ h1 {
 .status-menu-item:focus-visible,
 .assignee-menu-item:hover,
 .assignee-menu-item:focus-visible {
-  background: var(--surface-soft);
+  background: #f4f4f4;
   outline: none;
 }
 
+.status-menu-item[aria-current="true"],
 .assignee-menu-item-active {
-  background: var(--surface-current);
+  background: #f4f4f4;
   outline: none;
 }
 
@@ -1926,7 +1982,7 @@ h1 {
 
 .detail-editable:hover,
 .detail-editable:focus-visible {
-  background: var(--surface-soft);
+  background: #f4f4f4;
   border-color: var(--hairline);
   outline: none;
 }
@@ -2104,7 +2160,7 @@ h1 {
 .comment-menu-button:hover,
 .comment-menu-button:focus-visible {
   color: var(--ink);
-  background: var(--surface-soft);
+  background: #f4f4f4;
   border-color: var(--hairline);
   outline: none;
 }
@@ -2138,7 +2194,7 @@ h1 {
 }
 
 .comment-menu-item:hover {
-  background: var(--surface-soft);
+  background: #f4f4f4;
 }
 
 .comment-menu-item-danger {
